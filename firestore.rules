@@ -52,6 +52,19 @@
 //   - totalPomodoros: number (required, >= 0)
 //   - userId: string (required)
 //
+// Collection: users/{userId}/timer
+// Document ID: current
+// Fields:
+//   - expectedEndTime: number (optional)
+//   - timeLeft: number (required, >= 0)
+//   - isActive: bool (required)
+//   - mode: string (required, enum: WORK, BREAK)
+//   - duration: number (required, > 0)
+//   - energyLevel: string (required, enum: HIGH, NORMAL, LOW)
+//   - activeTaskIds: list (required)
+//   - sessionTaskIds: list (required)
+//   - updatedAt: number (required)
+//
 // ===============================================================
 
 rules_version = '2';
@@ -92,6 +105,17 @@ service cloud.firestore {
       return type in ['WORK', 'BREAK'];
     }
 
+    function isValidTimer(data) {
+      return data.timeLeft is number && data.timeLeft >= 0 &&
+             data.isActive is bool &&
+             isValidSessionType(data.mode) &&
+             data.duration is number && data.duration > 0 &&
+             isValidEnergyLevel(data.energyLevel) &&
+             data.activeTaskIds is list &&
+             data.sessionTaskIds is list &&
+             data.updatedAt is number;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -117,6 +141,11 @@ service cloud.firestore {
 
       match /stats/{statsId} {
         allow read, write: if isOwner(userId);
+      }
+
+      match /timer/{timerId} {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId) && isValidTimer(request.resource.data);
       }
     }
   }

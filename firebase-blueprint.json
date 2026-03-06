@@ -69,6 +69,22 @@
         "userId": { "type": "string" }
       },
       "required": ["userId"]
+    },
+    "TimerState": {
+      "title": "TimerState",
+      "description": "Current state of the timer",
+      "type": "object",
+      "properties": {
+        "expectedEndTime": { "type": ["number", "null"] },
+        "timeLeft": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "mode": { "type": "string", "enum": ["WORK", "BREAK"] },
+        "duration": { "type": "number" },
+        "energyLevel": { "type": "string", "enum": ["HIGH", "NORMAL", "LOW"] },
+        "activeTaskIds": { "type": "array", "items": { "type": "string" } },
+        "sessionTaskIds": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -76,6 +92,7 @@
     "/users/{userId}/ideas/{ideaId}": { "schema": "Idea", "description": "User ideas" },
     "/users/{userId}/sessions/{sessionId}": { "schema": "Session", "description": "User sessions" },
     "/users/{userId}/tags/{tagId}": { "schema": "Tag", "description": "User tags" },
-    "/users/{userId}/stats/{statsId}": { "schema": "UserStats", "description": "User statistics" }
+    "/users/{userId}/stats/{statsId}": { "schema": "UserStats", "description": "User statistics" },
+    "/users/{userId}/timer/{timerId}": { "schema": "TimerState", "description": "User timer state" }
   }
 }

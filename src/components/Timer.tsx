@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Play, Pause, RotateCcw, Zap, Coffee, Lightbulb, Brain, ChevronRight, Plus, CheckCircle2 } from 'lucide-react';
+import { Play, Pause, RotateCcw, Zap, Coffee, Lightbulb, Brain, ChevronRight, Plus, CheckCircle2, Bell, BellOff } from 'lucide-react';
 import { useApp } from '../AppContext';
 import { EnergyLevel, TaskStatus } from '../types';
 import { ENERGY_LABELS, DEFAULT_POMODORO_DURATION, INERTIA_DURATION } from '../constants';
@@ -16,8 +16,22 @@ export const Timer: React.FC = () => {
   const { 
     timeLeft, isActive, mode, duration, energyLevel, activeTaskIds,
     toggleTimer, resetTimer, setEnergyLevel,
-    setTimerDuration, handleFinishTaskEarly, toggleTaskSelection
+    setTimerDuration, handleFinishTaskEarly, toggleTaskSelection,
+    requestNotificationPermission
   } = timer;
+
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+
+  useEffect(() => {
+    if ('Notification' in window) {
+      setNotificationsEnabled(Notification.permission === 'granted');
+    }
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    await requestNotificationPermission();
+    setNotificationsEnabled(Notification.permission === 'granted');
+  };
 
   const cycleEnergy = () => {
     const levels = [EnergyLevel.LOW, EnergyLevel.NORMAL, EnergyLevel.HIGH];
@@ -237,6 +251,17 @@ export const Timer: React.FC = () => {
           className="p-3 rounded-full bg-zinc-900 text-zinc-400 hover:text-white transition-colors"
         >
           <Lightbulb size={20} />
+        </button>
+
+        <button 
+          onClick={handleEnableNotifications}
+          className={cn(
+            "p-3 rounded-full transition-all",
+            notificationsEnabled ? "bg-zinc-900 text-emerald-500" : "bg-zinc-900 text-zinc-500 hover:text-white"
+          )}
+          title={notificationsEnabled ? "Notificaciones activadas" : "Activar notificaciones (incluso si cierras la app)"}
+        >
+          {notificationsEnabled ? <Bell size={20} /> : <BellOff size={20} />}
         </button>
       </div>
 

@@ -10,7 +10,7 @@ import { Timer } from './components/Timer';
 import { TaskList } from './components/TaskList';
 import { Statistics } from './components/Statistics';
 import { History, IdeaList } from './components/HistoryAndIdeas';
-import { Home as HomeIcon, ListTodo, History as HistoryIcon, BarChart2, Lightbulb } from 'lucide-react';
+import { Home as HomeIcon, ListTodo, History as HistoryIcon, BarChart2, Lightbulb, X } from 'lucide-react';
 import { Home } from './components/Home';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './types';
@@ -50,7 +50,7 @@ const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> 
 
 // Componente que renderiza el contenido principal basado en la pantalla actual
 function AppContent() {
-  const { currentScreen, setScreen, userId, isAuthReady, signIn } = useApp();
+  const { currentScreen, setScreen, userId, isAuthReady, signIn, error, setError } = useApp();
 
   // Si aún estamos comprobando la autenticación, mostrar una pantalla de carga o nada
   if (!isAuthReady) {
@@ -86,6 +86,23 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-emerald-500/30">
+      {/* Error Display */}
+      <AnimatePresence>
+        {error && (
+          <motion.div 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-4 left-4 right-4 z-[100] bg-red-500 text-white p-4 rounded-2xl shadow-xl flex items-center justify-between"
+          >
+            <p className="text-sm font-medium">{error}</p>
+            <button onClick={() => setError(null)} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+              <X size={18} />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <main className="pb-24">
         {/* Animaciones de transición entre pantallas */}
         <AnimatePresence mode="wait">

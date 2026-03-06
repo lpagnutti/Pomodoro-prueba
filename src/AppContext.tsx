@@ -5,6 +5,57 @@ import { db, auth } from './firebase';
 import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  // We don't throw here to avoid crashing the whole app, but we log it
+}
+
 export const TAG_COLORS = [
   '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#ef4444', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
   '#d946ef', '#14b8a6', '#facc15', '#fb7185', '#a855f7', '#22c55e', '#38bdf8', '#4ade80', '#f472b6', '#94a3b8',
@@ -35,6 +86,8 @@ interface AppContextType {
   setTasksToResolve: (ids: string[]) => void;
   showFinishModal: boolean;
   setShowFinishModal: (show: boolean) => void;
+  error: string | null;
+  setError: (error: string | null) => void;
   draftTask: Partial<Task> | null;
   setDraftTask: (task: Partial<Task> | null) => void;
   addTask: (task: Partial<Task>) => void;
@@ -65,6 +118,7 @@ interface AppContextType {
     setTimerDuration: (minutes: number) => void;
     handleFinishTaskEarly: (taskId: string) => void;
     toggleTaskSelection: (taskId: string) => void;
+    requestNotificationPermission: () => Promise<void>;
   };
 }
 
@@ -117,30 +171,65 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const unsubTasks = onSnapshot(collection(db, 'users', userId, 'tasks'), (snapshot) => {
       setTasks(snapshot.docs.map(doc => doc.data() as Task));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/tasks`));
+
     const unsubIdeas = onSnapshot(collection(db, 'users', userId, 'ideas'), (snapshot) => {
       setIdeas(snapshot.docs.map(doc => doc.data() as Idea));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/ideas`));
+
     const unsubSessions = onSnapshot(collection(db, 'users', userId, 'sessions'), (snapshot) => {
       setSessions(snapshot.docs.map(doc => doc.data() as Session));
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/sessions`));
+
     const unsubTags = onSnapshot(collection(db, 'users', userId, 'tags'), (snapshot) => {
       const fetchedTags = snapshot.docs.map(doc => doc.data() as Tag);
       setTags(fetchedTags.length > 0 ? fetchedTags : DEFAULT_TAGS);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/tags`));
+
     const unsubStats = onSnapshot(doc(db, 'users', userId, 'stats', 'current'), (snapshot) => {
       if (snapshot.exists()) setStats(snapshot.data() as UserStats);
-    });
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/stats/current`));
+
+    const unsubTimer = onSnapshot(doc(db, 'users', userId, 'timer', 'current'), (snapshot) => {
+      if (snapshot.exists() && !snapshot.metadata.hasPendingWrites) {
+        const data = snapshot.data();
+        if (data.expectedEndTime !== undefined) setExpectedEndTime(data.expectedEndTime);
+        if (data.timeLeft !== undefined) setTimeLeft(data.timeLeft);
+        if (data.isActive !== undefined) setIsActive(data.isActive);
+        if (data.mode) setMode(data.mode);
+        if (data.duration) setDuration(data.duration);
+        if (data.energyLevel) setEnergyLevel(data.energyLevel);
+        if (data.activeTaskIds) setActiveTaskIds(data.activeTaskIds);
+        if (data.sessionTaskIds) setSessionTaskIds(data.sessionTaskIds);
+      }
+    }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/timer/current`));
 
     return () => {
-      unsubTasks(); unsubIdeas(); unsubSessions(); unsubTags(); unsubStats();
+      unsubTasks(); unsubIdeas(); unsubSessions(); unsubTags(); unsubStats(); unsubTimer();
     };
   }, [userId]);
 
   const [currentScreen, setScreen] = useState<Screen>('HOME');
   const [tasksToResolve, setTasksToResolve] = useState<string[]>([]);
   const [showFinishModal, setShowFinishModal] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<Partial<Task> | null>(null);
+
+  // Connection test
+  useEffect(() => {
+    if (!userId) return;
+    const testConnection = async () => {
+      try {
+        const { getDocFromServer } = await import('firebase/firestore');
+        await getDocFromServer(doc(db, 'users', userId, 'stats', 'current'));
+      } catch (err) {
+        if (err instanceof Error && err.message.includes('the client is offline')) {
+          setError("Error de conexión con Firebase. Por favor, revisa tu conexión.");
+        }
+      }
+    };
+    testConnection();
+  }, [userId]);
 
   // Añade una nueva tarea a Firestore
   const addTask = async (task: Partial<Task>) => {
@@ -164,7 +253,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    await setDoc(doc(db, 'users', userId, 'tasks', newTask.id), newTask);
+    try {
+      await setDoc(doc(db, 'users', userId, 'tasks', newTask.id), newTask);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}/tasks/${newTask.id}`);
+    }
   };
 
   // Actualiza una tarea existente en Firestore
@@ -179,13 +272,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    await updateDoc(doc(db, 'users', userId, 'tasks', id), cleanedUpdates as any);
+    try {
+      await updateDoc(doc(db, 'users', userId, 'tasks', id), cleanedUpdates as any);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${userId}/tasks/${id}`);
+    }
   };
 
   // Elimina una tarea de Firestore
   const deleteTask = async (id: string) => {
     if (!userId) return;
-    await deleteDoc(doc(db, 'users', userId, 'tasks', id));
+    try {
+      await deleteDoc(doc(db, 'users', userId, 'tasks', id));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `users/${userId}/tasks/${id}`);
+    }
   };
 
   const addIdea = async (text: string) => {
@@ -195,7 +296,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       text,
       createdAt: Date.now(),
     };
-    await setDoc(doc(db, 'users', userId, 'ideas', newIdea.id), newIdea);
+    try {
+      await setDoc(doc(db, 'users', userId, 'ideas', newIdea.id), newIdea);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, `users/${userId}/ideas/${newIdea.id}`);
+    }
   };
 
   const addSession = async (session: Session) => {
@@ -286,6 +391,85 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [energyLevel, setEnergyLevel] = useState<EnergyLevel>(EnergyLevel.NORMAL);
   const [activeTaskIds, setActiveTaskIds] = useState<string[]>([]);
   const [sessionTaskIds, setSessionTaskIds] = useState<string[]>([]);
+  const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
+
+  // Helper to convert VAPID key
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  };
+
+  const requestNotificationPermission = async () => {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        const registration = await navigator.serviceWorker.register('/sw.js');
+        
+        // Get VAPID public key from server
+        const response = await fetch('/api/vapid-public-key');
+        const { publicKey } = await response.json();
+        
+        const subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(publicKey)
+        });
+        
+        setPushSubscription(subscription);
+        
+        // Send subscription to server
+        await fetch('/api/notifications/subscribe', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscription, userId })
+        });
+      }
+    } catch (error) {
+      console.error('Error setting up push notifications:', error);
+    }
+  };
+
+  // Register SW on mount
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(err => console.error('SW registration failed:', err));
+    }
+  }, []);
+
+  // Sync timer state to Firestore
+  useEffect(() => {
+    if (!userId) return;
+    
+    const syncTimer = async () => {
+      try {
+        const timerData = {
+          expectedEndTime,
+          timeLeft,
+          isActive,
+          mode,
+          duration,
+          energyLevel,
+          activeTaskIds,
+          sessionTaskIds,
+          updatedAt: Date.now()
+        };
+        await setDoc(doc(db, 'users', userId, 'timer', 'current'), timerData);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, `users/${userId}/timer/current`);
+      }
+    };
+
+    // Sync when important states change
+    const timeout = setTimeout(syncTimer, 2000);
+    return () => clearTimeout(timeout);
+  }, [userId, expectedEndTime, isActive, mode, duration, energyLevel, activeTaskIds, sessionTaskIds, isActive ? null : timeLeft]);
 
   const handleTimerComplete = useCallback(() => {
     setIsActive(false);
@@ -325,36 +509,72 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
-    if (isActive && expectedEndTime) {
-      interval = setInterval(() => {
-        const remaining = Math.max(0, Math.round((expectedEndTime - Date.now()) / 1000));
-        setTimeLeft(remaining);
-        if (remaining === 0) {
-          handleTimerComplete();
-        }
-      }, 500);
-    } else if (isActive && !expectedEndTime) {
-      setExpectedEndTime(Date.now() + timeLeft * 1000);
+    if (isActive) {
+      if (!expectedEndTime) {
+        setExpectedEndTime(Date.now() + timeLeft * 1000);
+      } else {
+        interval = setInterval(() => {
+          const remaining = Math.max(0, Math.round((expectedEndTime - Date.now()) / 1000));
+          setTimeLeft(remaining);
+          if (remaining === 0) {
+            handleTimerComplete();
+          }
+        }, 500);
+      }
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isActive, expectedEndTime, handleTimerComplete, timeLeft]);
+  }, [isActive, expectedEndTime, handleTimerComplete]);
 
-  const toggleTimer = () => {
+  const toggleTimer = async () => {
     if (isActive && mode === 'WORK') return;
     if (!isActive && mode === 'WORK' && activeTaskIds.length === 0) return;
     
     if (!isActive) {
-      setExpectedEndTime(Date.now() + timeLeft * 1000);
+      const newEndTime = Date.now() + timeLeft * 1000;
+      setExpectedEndTime(newEndTime);
       setIsActive(true);
+
+      // Schedule push notification if subscribed
+      if (pushSubscription && mode === 'WORK') {
+        fetch('/api/notifications/schedule', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            subscription: pushSubscription,
+            delay: timeLeft * 1000,
+            title: 'Pomodoro Focus',
+            body: '¡Tu sesión ha terminado! Es hora de un descanso.',
+            userId
+          })
+        });
+      }
     } else {
       setExpectedEndTime(null);
       setIsActive(false);
+      
+      // Cancel push notification
+      if (userId) {
+        fetch('/api/notifications/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId })
+        });
+      }
     }
   };
   
   const resetTimer = (options?: { reason?: 'FINISHED_EARLY' | 'INTERRUPTION' | 'DISTRACTION' | 'SKIP' }) => {
+    // Cancel push notification
+    if (userId) {
+      fetch('/api/notifications/cancel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+    }
+
     if (mode === 'WORK') {
       const elapsedMinutes = (duration * 60 - timeLeft) / 60;
       
@@ -447,6 +667,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       currentScreen, setScreen,
       tasksToResolve, setTasksToResolve,
       showFinishModal, setShowFinishModal,
+      error, setError,
       draftTask, setDraftTask,
       addTask, updateTask, deleteTask, addIdea, addSession, completeTask,
       convertIdeaToTask,
@@ -455,7 +676,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       timer: {
         timeLeft, isActive, mode, duration, energyLevel, activeTaskIds, sessionTaskIds,
         toggleTimer, resetTimer, setEnergyLevel, setActiveTaskIds,
-        setTimerDuration, handleFinishTaskEarly, toggleTaskSelection
+        setTimerDuration, handleFinishTaskEarly, toggleTaskSelection,
+        requestNotificationPermission
       }
     }}>
       {children}
