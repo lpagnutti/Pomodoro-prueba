@@ -4,6 +4,8 @@ import { XP_PER_POMODORO, LEVELS, DEFAULT_POMODORO_DURATION, INERTIA_DURATION } 
 import { db, auth } from './firebase';
 import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, onSnapshot, query, where } from 'firebase/firestore';
 import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import { useMedications, useMedicationLogs, useAddMedication, useUpdateMedication, useDeleteMedication, useTakeMedication } from './hooks/useMedications';
+import { useTasks, useAddTask, useUpdateTask, useDeleteTask } from './hooks/useTasks';
 
 enum OperationType {
   CREATE = 'create',
@@ -118,6 +120,20 @@ interface AppContextType {
   updateReminder: (id: string, updates: Partial<Reminder>) => void;
   deleteReminder: (id: string) => void;
   completeReminder: (id: string) => void;
+  activeReminder: Reminder | null;
+  setActiveReminder: (reminder: Reminder | null) => void;
+  activeMedicationReminder: {
+    medicationId: string;
+    medicationName: string;
+    dose: string;
+    scheduledTime: string;
+  } | null;
+  setActiveMedicationReminder: (reminder: {
+    medicationId: string;
+    medicationName: string;
+    dose: string;
+    scheduledTime: string;
+  } | null) => void;
   seedMockData: () => void;
   signIn: () => Promise<void>;
   suggestedTasks: Task[];
@@ -150,12 +166,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Estado local para los datos de la aplicación
   const [userId, setUserId] = useState<string | null>(null);
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const [tasks, setTasks] = useState<Task[]>([]);
+  
+  // React Query Hooks
+  const { data: tasks = [] } = useTasks(userId);
+  const { data: medications = [] } = useMedications(userId);
+  const { data: medicationLogs = [] } = useMedicationLogs(userId);
+  
+  const addTaskMutation = useAddTask(userId);
+  const updateTaskMutation = useUpdateTask(userId);
+  const deleteTaskMutation = useDeleteTask(userId);
+  
+  const addMedicationMutation = useAddMedication(userId);
+  const updateMedicationMutation = useUpdateMedication(userId);
+  const deleteMedicationMutation = useDeleteMedication(userId);
+  const takeMedicationMutation = useTakeMedication(userId);
+
+  // Local state for other entities (to be migrated later)
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [tags, setTags] = useState<Tag[]>(DEFAULT_TAGS);
-  const [medications, setMedications] = useState<Medication[]>([]);
-  const [medicationLogs, setMedicationLogs] = useState<MedicationLog[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [moodLogs, setMoodLogs] = useState<MoodLog[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -213,14 +242,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     if (!userId) return;
 
-    const unsubTasks = onSnapshot(collection(db, 'users', userId, 'tasks'), (snapshot) => {
-      setTasks(snapshot.docs.map(doc => doc.data() as Task));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/tasks`));
-
-    const unsubIdeas = onSnapshot(collection(db, 'users', userId, 'ideas'), (snapshot) => {
-      setIdeas(snapshot.docs.map(doc => doc.data() as Idea));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/ideas`));
-
     const unsubSessions = onSnapshot(collection(db, 'users', userId, 'sessions'), (snapshot) => {
       setSessions(snapshot.docs.map(doc => doc.data() as Session));
     }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/sessions`));
@@ -248,14 +269,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }, (error) => handleFirestoreError(error, OperationType.GET, `users/${userId}/timer/current`));
 
-    const unsubMeds = onSnapshot(collection(db, 'users', userId, 'medications'), (snapshot) => {
-      setMedications(snapshot.docs.map(doc => doc.data() as Medication));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/medications`));
-
-    const unsubMedLogs = onSnapshot(collection(db, 'users', userId, 'medicationLogs'), (snapshot) => {
-      setMedicationLogs(snapshot.docs.map(doc => doc.data() as MedicationLog));
-    }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/medicationLogs`));
-
     const unsubNotes = onSnapshot(collection(db, 'users', userId, 'notes'), (snapshot) => {
       setNotes(snapshot.docs.map(doc => doc.data() as Note));
     }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/notes`));
@@ -269,7 +282,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }, (error) => handleFirestoreError(error, OperationType.LIST, `users/${userId}/reminders`));
 
     return () => {
-      unsubTasks(); unsubIdeas(); unsubSessions(); unsubTags(); unsubStats(); unsubTimer(); unsubMeds(); unsubMedLogs(); unsubNotes(); unsubMoodLogs(); unsubReminders();
+      unsubIdeas(); unsubSessions(); unsubTags(); unsubStats(); unsubTimer(); unsubNotes(); unsubMoodLogs(); unsubReminders();
     };
   }, [userId]);
 
@@ -295,67 +308,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     testConnection();
   }, [userId]);
 
-  // Añade una nueva tarea a Firestore
-  const addTask = async (task: Partial<Task>) => {
-    if (!userId) return;
-    const newTask: Task = {
-      id: crypto.randomUUID(),
-      name: task.name || 'Nueva Tarea',
-      tag: task.tag || 'General',
-      tags: task.tags || [],
-      estimatedPomodoros: task.estimatedPomodoros || 1,
-      actualPomodoros: 0,
-      status: TaskStatus.PENDING,
-      createdAt: Date.now(),
-      ...task,
-    };
-
-    // Remove undefined values to prevent Firestore errors
-    Object.keys(newTask).forEach(key => {
-      if (newTask[key as keyof Task] === undefined) {
-        delete newTask[key as keyof Task];
-      }
-    });
-
-    try {
-      await setDoc(doc(db, 'users', userId, 'tasks', newTask.id), newTask);
-      
-      // If this task was converted from an idea, delete the original idea
-      if ((task as any).fromIdeaId) {
-        await deleteDoc(doc(db, 'users', userId, 'ideas', (task as any).fromIdeaId));
-      }
-    } catch (error) {
-      handleFirestoreError(error, OperationType.WRITE, `users/${userId}/tasks/${newTask.id}`);
+  // Task Actions (Delegated to Mutations)
+  const addTask = (task: Partial<Task>) => {
+    addTaskMutation.mutate(task);
+    // Handle idea conversion if needed
+    if ((task as any).fromIdeaId) {
+       deleteDoc(doc(db, 'users', userId!, 'ideas', (task as any).fromIdeaId));
     }
   };
 
-  // Actualiza una tarea existente en Firestore
-  const updateTask = async (id: string, updates: Partial<Task>) => {
-    if (!userId) return;
-    
-    // Remove undefined values to prevent Firestore errors
-    const cleanedUpdates = { ...updates };
-    Object.keys(cleanedUpdates).forEach(key => {
-      if (cleanedUpdates[key as keyof Task] === undefined) {
-        delete cleanedUpdates[key as keyof Task];
-      }
-    });
-
-    try {
-      await updateDoc(doc(db, 'users', userId, 'tasks', id), cleanedUpdates as any);
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${userId}/tasks/${id}`);
-    }
+  const updateTask = (id: string, updates: Partial<Task>) => {
+    updateTaskMutation.mutate({ id, updates });
   };
 
-  // Elimina una tarea de Firestore
-  const deleteTask = async (id: string) => {
-    if (!userId) return;
-    try {
-      await deleteDoc(doc(db, 'users', userId, 'tasks', id));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `users/${userId}/tasks/${id}`);
-    }
+  const deleteTask = (id: string) => {
+    deleteTaskMutation.mutate(id);
   };
 
   const addIdea = async (text: string) => {
@@ -453,53 +420,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteDoc(doc(db, 'users', userId, 'tags', id));
   };
 
-  const addMedication = async (med: Partial<Medication>) => {
-    if (!userId) return;
-    const newMed: Medication = {
-      id: crypto.randomUUID(),
-      name: med.name || 'Nuevo Medicamento',
-      dose: med.dose || '',
-      frequency: med.frequency || '',
-      times: med.times || [],
-      notes: med.notes || '',
-      stock: med.stock || 0,
-      minStock: med.minStock || 5,
-      isActive: true,
-      createdAt: Date.now(),
-    };
-    await setDoc(doc(db, 'users', userId, 'medications', newMed.id), newMed);
+  const addMedication = (med: Partial<Medication>) => {
+    addMedicationMutation.mutate(med);
   };
 
-  const updateMedication = async (id: string, updates: Partial<Medication>) => {
-    if (!userId) return;
-    await updateDoc(doc(db, 'users', userId, 'medications', id), updates as any);
+  const updateMedication = (id: string, updates: Partial<Medication>) => {
+    updateMedicationMutation.mutate({ id, updates });
   };
 
-  const deleteMedication = async (id: string) => {
-    if (!userId) return;
-    await deleteDoc(doc(db, 'users', userId, 'medications', id));
+  const deleteMedication = (id: string) => {
+    deleteMedicationMutation.mutate(id);
   };
 
-  const takeMedication = async (id: string) => {
-    if (!userId) return;
+  const takeMedication = (id: string) => {
     const med = medications.find(m => m.id === id);
     if (!med) return;
-
-    const newLog: MedicationLog = {
-      id: crypto.randomUUID(),
-      medicationId: id,
-      medicationName: med.name,
-      takenAt: Date.now(),
-      dose: med.dose,
-    };
-
-    await setDoc(doc(db, 'users', userId, 'medicationLogs', newLog.id), newLog);
-    await updateDoc(doc(db, 'users', userId, 'medications', id), {
-      stock: Math.max(0, med.stock - 1)
-    });
+    takeMedicationMutation.mutate({ id, med });
 
     if (med.stock - 1 <= med.minStock) {
       sendNotification('Pomodoro Focus', `¡Atención! Te queda poco stock de ${med.name}.`);
+      // Add shopping reminder for tomorrow at the same time
+      addReminder({
+        title: `Comprar ${med.name}`,
+        description: `El stock de ${med.name} es bajo (${med.stock - 1} restantes).`,
+        datetime: Date.now() + 24 * 60 * 60 * 1000, // Tomorrow at this time
+      });
     }
   };
 
@@ -575,7 +520,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Implement if needed, or skip for now
   };
 
-  const [suggestedTasks, setSuggestedTasks] = useState<Task[]>([]);
+  const suggestedTasks = React.useMemo(() => {
+    const pending = tasks.filter(t => t.status !== TaskStatus.COMPLETED);
+    if (pending.length === 0) return [];
+    return [...pending].sort((a, b) => a.estimatedPomodoros - b.estimatedPomodoros).slice(0, 5);
+  }, [tasks]);
 
   // Timer State (keep in memory for now, or sync to Firestore if needed)
   const [expectedEndTime, setExpectedEndTime] = useState<number | null>(null);
@@ -587,6 +536,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTaskIds, setActiveTaskIds] = useState<string[]>([]);
   const [sessionTaskIds, setSessionTaskIds] = useState<string[]>([]);
   const [pushSubscription, setPushSubscription] = useState<PushSubscription | null>(null);
+  const [activeReminder, setActiveReminder] = useState<Reminder | null>(null);
+  const [activeMedicationReminder, setActiveMedicationReminder] = useState<{
+    medicationId: string;
+    medicationName: string;
+    dose: string;
+    scheduledTime: string;
+  } | null>(null);
+  const [hasInteracted, setHasInteracted] = useState(false);
+
+  // Listen for user interaction to enable audio
+  useEffect(() => {
+    const handleInteraction = () => {
+      setHasInteracted(true);
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+    };
+
+    window.addEventListener('click', handleInteraction);
+    window.addEventListener('keydown', handleInteraction);
+
+    return () => {
+      window.removeEventListener('click', handleInteraction);
+      window.removeEventListener('keydown', handleInteraction);
+    };
+  }, []);
 
   // Helper to convert VAPID key
   const urlBase64ToUint8Array = (base64String: string) => {
@@ -599,6 +573,76 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return outputArray;
   };
+
+  // Poll for medication reminders (in-app)
+  useEffect(() => {
+    const checkMedications = () => {
+      const now = new Date();
+      const currentHour = now.getHours();
+      const currentMinute = now.getMinutes();
+      const currentTimeStr = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+
+      // Check if we already have an active reminder to avoid overwriting
+      if (activeMedicationReminder) return;
+
+      for (const med of medications) {
+        // Treat undefined as true for backward compatibility
+        if (med.isActive === false) continue;
+
+        // Normalize times to ensure HH:MM format matches
+        const normalizedTimes = med.times.map(t => {
+          const [h, m] = t.split(':').map(Number);
+          return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+        });
+
+        if (normalizedTimes.includes(currentTimeStr)) {
+          // Check if already taken today at this time
+          // This is a simple check, could be more robust with full date comparison
+          const takenToday = medicationLogs.some(log => {
+            const logDate = new Date(log.takenAt);
+            return log.medicationId === med.id &&
+                   logDate.getDate() === now.getDate() &&
+                   logDate.getMonth() === now.getMonth() &&
+                   logDate.getFullYear() === now.getFullYear() &&
+                   Math.abs(logDate.getHours() - currentHour) < 1 && // Within 1 hour window
+                   Math.abs(logDate.getMinutes() - currentMinute) < 30; // Within 30 min window
+          });
+
+          if (!takenToday) {
+             // Check if we recently alerted for this (to avoid spamming every second of the minute)
+             // For simplicity in this implementation, we rely on the modal being open to block new ones
+             // or we could add a 'lastAlerted' timestamp to the medication object in a local state wrapper
+             
+             // Simple debounce: only trigger if seconds are < 5 (run check every 5s)
+             // But since we run this interval every 5s, it might trigger multiple times in the same minute.
+             // We need a way to know "we already showed the alert for 08:00 today".
+             // Let's assume the user deals with the modal. If they close it, we shouldn't show it again immediately.
+             // We can use a session-based set of "alerted keys".
+             const alertKey = `${med.id}-${currentTimeStr}-${now.getDate()}`;
+             if (!sessionStorage.getItem(alertKey)) {
+               setActiveMedicationReminder({
+                 medicationId: med.id,
+                 medicationName: med.name,
+                 dose: med.dose,
+                 scheduledTime: currentTimeStr
+               });
+               sessionStorage.setItem(alertKey, 'true');
+               
+               // Play sound only if user has interacted
+               if (hasInteracted) {
+                 const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+                 audio.play().catch(e => console.log("Audio play blocked (expected if no interaction)", e));
+               }
+               return; // Only show one at a time
+             }
+          }
+        }
+      }
+    };
+
+    const interval = setInterval(checkMedications, 5000); // Check every 5 seconds
+    return () => clearInterval(interval);
+  }, [medications, medicationLogs, activeMedicationReminder]);
 
   // Schedule medication reminders
   useEffect(() => {
@@ -679,6 +723,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const interval = setInterval(scheduleGeneralReminders, 60 * 60 * 1000);
     return () => clearInterval(interval);
   }, [userId, pushSubscription, reminders]);
+
+  // Poll for active reminders (in-app)
+  useEffect(() => {
+    const checkReminders = () => {
+      const now = Date.now();
+      // Find a reminder that is due within the last minute and hasn't been completed
+      // We use a small window to avoid re-triggering old reminders if the app was closed
+      const dueReminder = reminders.find(r => 
+        !r.completed && 
+        r.datetime <= now && 
+        r.datetime > now - 60000 // 1 minute window
+      );
+      
+      if (dueReminder && !activeReminder) {
+        setActiveReminder(dueReminder);
+        // Play sound only if user has interacted
+        if (hasInteracted) {
+          const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
+          audio.play().catch(e => console.log("Audio play blocked (expected if no interaction)", e));
+        }
+      }
+    };
+
+    const interval = setInterval(checkReminders, 5000); // Check every 5 seconds
+    return () => clearInterval(interval);
+  }, [reminders, activeReminder]);
 
   const requestNotificationPermission = async () => {
     if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
@@ -922,16 +992,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [tasks, activeTaskIds]);
 
-  useEffect(() => {
-    const pending = tasks.filter(t => t.status !== TaskStatus.COMPLETED);
-    if (pending.length === 0) {
-      setSuggestedTasks([]);
-      return;
-    }
-    const sorted = [...pending].sort((a, b) => a.estimatedPomodoros - b.estimatedPomodoros);
-    setSuggestedTasks(sorted.slice(0, 5));
-  }, [tasks]);
-
   return (
     <AppContext.Provider value={{ 
       userId,
@@ -949,6 +1009,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       addMedication, updateMedication, deleteMedication, takeMedication,
       addNote, deleteNote, addMoodLog,
       addReminder, updateReminder, deleteReminder, completeReminder,
+      activeReminder, setActiveReminder,
+      activeMedicationReminder, setActiveMedicationReminder,
       seedMockData, signIn,
       suggestedTasks,
       timer: {

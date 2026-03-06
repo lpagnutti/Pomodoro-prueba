@@ -8,7 +8,7 @@ export const RemindersTab: React.FC = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDescription, setNewDescription] = useState('');
-  const [newDate, setNewDate] = useState('');
+  const [newDate, setNewDate] = useState(new Date().toISOString().split('T')[0]);
   const [newTime, setNewTime] = useState('');
   const [view, setView] = useState<'PENDING' | 'COMPLETED'>('PENDING');
 
@@ -23,7 +23,7 @@ export const RemindersTab: React.FC = () => {
       });
       setNewTitle('');
       setNewDescription('');
-      setNewDate('');
+      setNewDate(new Date().toISOString().split('T')[0]);
       setNewTime('');
       setShowAddForm(false);
     }

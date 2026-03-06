@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie, LineChart, Line } from 'recharts';
 import { useApp } from '../AppContext';
-import { TrendingUp, Target, Award, Zap, Calendar, Filter, ChevronDown, PieChart as PieChartIcon } from 'lucide-react';
+import { TrendingUp, Target, Award, Zap, Calendar, Filter, ChevronDown, PieChart as PieChartIcon, Clock, Flame, Star } from 'lucide-react';
 import { TaskStatus, cn, EnergyLevel } from '../types';
 
 const ENERGY_COLORS = {
@@ -161,6 +161,67 @@ export const Statistics: React.FC = () => {
 
   const { accuracy, pomodoroCount, periodTasks } = getFilteredStats();
 
+  // Calculate Focus Time (in minutes)
+  const focusTimeMinutes = Math.round(pomodoroCount * 25);
+  const focusTimeHours = Math.floor(focusTimeMinutes / 60);
+  const focusTimeMinsRemainder = focusTimeMinutes % 60;
+  const focusTimeStr = focusTimeHours > 0 
+    ? `${focusTimeHours}h ${focusTimeMinsRemainder}m` 
+    : `${focusTimeMinutes}m`;
+
+  // Calculate Current Streak
+  const calculateStreak = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    let currentStreak = 0;
+    let checkDate = new Date(today);
+
+    // Get all unique dates with at least one work session
+    const workDates = new Set(
+      sessions
+        .filter(s => s.type === 'WORK')
+        .map(s => {
+          const d = new Date(s.startTime);
+          d.setHours(0, 0, 0, 0);
+          return d.getTime();
+        })
+    );
+
+    // Check today
+    if (workDates.has(checkDate.getTime())) {
+      currentStreak++;
+    }
+    
+    // Check previous days
+    while (true) {
+      checkDate.setDate(checkDate.getDate() - 1);
+      if (workDates.has(checkDate.getTime())) {
+        currentStreak++;
+      } else {
+        break;
+      }
+    }
+    return currentStreak;
+  };
+
+  const currentStreak = calculateStreak();
+
+  // Calculate Best Day
+  const calculateBestDay = () => {
+    const dayCounts = [0, 0, 0, 0, 0, 0, 0]; // Sun to Sat
+    sessions.filter(s => s.type === 'WORK').forEach(s => {
+      const day = new Date(s.startTime).getDay();
+      dayCounts[day] += s.duration;
+    });
+    const maxVal = Math.max(...dayCounts);
+    if (maxVal === 0) return 'N/A';
+    const maxIndex = dayCounts.indexOf(maxVal);
+    const days = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    return days[maxIndex];
+  };
+
+  const bestDay = calculateBestDay();
+
   // Prepare data for the pie chart
   const pieChartData = React.useMemo(() => {
     const tagCounts: Record<string, number> = {};
@@ -272,19 +333,40 @@ export const Statistics: React.FC = () => {
 
       {/* Quick Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
+        {/* Focus Time */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
-          <div className="p-2 bg-emerald-500/10 rounded-xl w-fit mb-3">
-            <Target className="text-emerald-500" size={20} />
+          <div className="p-2 bg-violet-500/10 rounded-xl w-fit mb-3">
+            <Clock className="text-violet-500" size={20} />
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Precisión</p>
-          <h4 className="text-2xl font-bold">{accuracy}%</h4>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Tiempo de Enfoque</p>
+          <h4 className="text-xl font-bold">{focusTimeStr}</h4>
         </div>
+
+        {/* Current Streak */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+          <div className="p-2 bg-orange-500/10 rounded-xl w-fit mb-3">
+            <Flame className="text-orange-500" size={20} />
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Racha Actual</p>
+          <h4 className="text-xl font-bold">{currentStreak} días</h4>
+        </div>
+
+        {/* Best Day */}
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+          <div className="p-2 bg-yellow-500/10 rounded-xl w-fit mb-3">
+            <Star className="text-yellow-500" size={20} />
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Mejor Día</p>
+          <h4 className="text-xl font-bold">{bestDay}</h4>
+        </div>
+
+        {/* Pomodoros */}
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
           <div className="p-2 bg-blue-500/10 rounded-xl w-fit mb-3">
             <Zap className="text-blue-500" size={20} />
           </div>
           <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Pomodoros</p>
-          <h4 className="text-2xl font-bold">{pomodoroCount.toFixed(1)}</h4>
+          <h4 className="text-xl font-bold">{pomodoroCount.toFixed(1)}</h4>
         </div>
       </div>
 
