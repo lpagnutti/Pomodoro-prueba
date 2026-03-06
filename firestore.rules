@@ -65,6 +65,45 @@
 //   - sessionTaskIds: list (required)
 //   - updatedAt: number (required)
 //
+// Collection: users/{userId}/medications
+// Document ID: medicationId
+// Fields:
+//   - id: string (required)
+//   - name: string (required)
+//   - dose: string (required)
+//   - frequency: string (required)
+//   - times: list (required)
+//   - notes: string (optional)
+//   - stock: number (required)
+//   - minStock: number (required)
+//   - isActive: bool (required)
+//   - createdAt: number (required)
+//
+// Collection: users/{userId}/medicationLogs
+// Document ID: logId
+// Fields:
+//   - id: string (required)
+//   - medicationId: string (required)
+//   - medicationName: string (required)
+//   - takenAt: number (required)
+//   - dose: string (required)
+//
+// Collection: users/{userId}/notes
+// Document ID: noteId
+// Fields:
+//   - id: string (required)
+//   - content: string (required)
+//   - createdAt: number (required)
+//   - title: string (optional)
+//
+// Collection: users/{userId}/moodLogs
+// Document ID: logId
+// Fields:
+//   - id: string (required)
+//   - mood: string (required)
+//   - note: string (optional)
+//   - createdAt: number (required)
+//
 // ===============================================================
 
 rules_version = '2';
@@ -146,6 +185,26 @@ service cloud.firestore {
       match /timer/{timerId} {
         allow read: if isOwner(userId);
         allow write: if isOwner(userId) && isValidTimer(request.resource.data);
+      }
+
+      match /medications/{medicationId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /medicationLogs/{logId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /notes/{noteId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /moodLogs/{logId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /reminders/{reminderId} {
+        allow read, write: if isOwner(userId);
       }
     }
   }

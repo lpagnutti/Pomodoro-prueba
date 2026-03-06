@@ -1,18 +1,19 @@
 {
   "name": "Pomodoro Focus",
   "short_name": "Pomodoro",
+  "description": "Tu asistente de enfoque y bienestar con Pomodoro y seguimiento de medicación.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#000000",
-  "theme_color": "#000000",
+  "theme_color": "#10b981",
   "icons": [
     {
-      "src": "/icon-192.png",
+      "src": "https://picsum.photos/seed/pomodoro/192/192",
       "sizes": "192x192",
       "type": "image/png"
     },
     {
-      "src": "/icon-512.png",
+      "src": "https://picsum.photos/seed/pomodoro/512/512",
       "sizes": "512x512",
       "type": "image/png"
     }

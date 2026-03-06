@@ -33,6 +33,7 @@ export const TaskList: React.FC = () => {
   const [newTag, setNewTag] = useState(tags[0]?.name || 'General');
   const [newEstimate, setNewEstimate] = useState(1);
   const [newDueDate, setNewDueDate] = useState<string>('');
+  const [fromIdeaId, setFromIdeaId] = useState<string | null>(null);
 
   const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({});
   const [expandedCompletedTags, setExpandedCompletedTags] = useState<Record<string, boolean>>({});
@@ -51,6 +52,7 @@ export const TaskList: React.FC = () => {
       setNewTaskName(draftTask.name || '');
       setNewTag(draftTask.tag || tags[0]?.name || 'General');
       setNewEstimate(draftTask.estimatedPomodoros || 1);
+      setFromIdeaId((draftTask as any).fromIdeaId || null);
       setShowAddForm(true);
       setDraftTask(null);
     }
@@ -123,10 +125,12 @@ export const TaskList: React.FC = () => {
         tag: newTag,
         estimatedPomodoros: newEstimate,
         taskDate: parsedDate,
-      });
+        fromIdeaId: fromIdeaId || undefined,
+      } as any);
       setNewTaskName('');
       setNewEstimate(1);
       setNewDueDate('');
+      setFromIdeaId(null);
       setShowAddForm(false);
     }
   };
@@ -367,7 +371,13 @@ export const TaskList: React.FC = () => {
                 <div className="flex gap-3 pt-4">
                   <button 
                     type="button"
-                    onClick={() => setShowAddForm(false)}
+                    onClick={() => {
+                      setNewTaskName('');
+                      setNewEstimate(1);
+                      setNewDueDate('');
+                      setFromIdeaId(null);
+                      setShowAddForm(false);
+                    }}
                     className="flex-1 p-5 rounded-2xl bg-zinc-800 text-zinc-400 font-bold"
                   >
                     Cancelar
@@ -755,6 +765,14 @@ export const TaskList: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <button 
+        onClick={() => setShowAddForm(true)}
+        className="w-full py-4 px-6 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-start gap-3 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors mt-8"
+      >
+        <Plus size={20} />
+        <span className="font-bold">Agregar Tarea</span>
+      </button>
 
       {/* Complete Confirmation Modal */}
       <AnimatePresence>

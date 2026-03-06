@@ -57,3 +57,47 @@ export interface UserStats {
   level: number;
   totalPomodoros: number;
 }
+
+export interface Medication {
+  id: string;
+  name: string;
+  dose: string;
+  frequency: string;
+  times: string[];
+  notes?: string;
+  stock: number;
+  minStock: number;
+  isActive: boolean;
+  createdAt: number;
+}
+
+export interface MedicationLog {
+  id: string;
+  medicationId: string;
+  medicationName: string;
+  takenAt: number;
+  dose: string;
+}
+
+export interface Note {
+  id: string;
+  content: string;
+  createdAt: number;
+  title?: string;
+}
+
+export interface MoodLog {
+  id: string;
+  mood: string;
+  note?: string;
+  createdAt: number;
+}
+
+export interface Reminder {
+  id: string;
+  title: string;
+  description?: string;
+  datetime: number; // timestamp
+  completed: boolean;
+  createdAt: number;
+}

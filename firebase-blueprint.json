@@ -85,6 +85,75 @@
         "sessionTaskIds": { "type": "array", "items": { "type": "string" } },
         "updatedAt": { "type": "number" }
       }
+    },
+    "Medication": {
+      "title": "Medication",
+      "description": "A medication to track",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "dose": { "type": "string" },
+        "frequency": { "type": "string" },
+        "times": { "type": "array", "items": { "type": "string" } },
+        "notes": { "type": "string" },
+        "stock": { "type": "number" },
+        "minStock": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "dose", "stock"]
+    },
+    "MedicationLog": {
+      "title": "MedicationLog",
+      "description": "A log of when a medication was taken",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "medicationId": { "type": "string" },
+        "medicationName": { "type": "string" },
+        "takenAt": { "type": "number" },
+        "dose": { "type": "string" }
+      },
+      "required": ["id", "medicationId", "takenAt"]
+    },
+    "Note": {
+      "title": "Note",
+      "description": "A personal note",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "title": { "type": "string" }
+      },
+      "required": ["id", "content", "createdAt"]
+    },
+    "MoodLog": {
+      "title": "MoodLog",
+      "description": "A log of the user's mood",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "mood": { "type": "string" },
+        "note": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "mood", "createdAt"]
+    },
+    "Reminder": {
+      "title": "Reminder",
+      "description": "A user reminder",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "datetime": { "type": "number" },
+        "completed": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "title", "datetime", "completed"]
     }
   },
   "firestore": {
@@ -93,6 +162,11 @@
     "/users/{userId}/sessions/{sessionId}": { "schema": "Session", "description": "User sessions" },
     "/users/{userId}/tags/{tagId}": { "schema": "Tag", "description": "User tags" },
     "/users/{userId}/stats/{statsId}": { "schema": "UserStats", "description": "User statistics" },
-    "/users/{userId}/timer/{timerId}": { "schema": "TimerState", "description": "User timer state" }
+    "/users/{userId}/timer/{timerId}": { "schema": "TimerState", "description": "User timer state" },
+    "/users/{userId}/medications/{medicationId}": { "schema": "Medication", "description": "User medications" },
+    "/users/{userId}/medicationLogs/{logId}": { "schema": "MedicationLog", "description": "User medication logs" },
+    "/users/{userId}/notes/{noteId}": { "schema": "Note", "description": "User notes" },
+    "/users/{userId}/moodLogs/{logId}": { "schema": "MoodLog", "description": "User mood logs" },
+    "/users/{userId}/reminders/{reminderId}": { "schema": "Reminder", "description": "User reminders" }
   }
 }

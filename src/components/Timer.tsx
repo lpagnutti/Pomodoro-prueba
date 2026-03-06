@@ -12,7 +12,7 @@ const formatPomodoros = (num: number | undefined) => {
 };
 
 export const Timer: React.FC = () => {
-  const { tasks, addIdea, suggestedTasks, timer, tags } = useApp();
+  const { tasks, addIdea, suggestedTasks, timer, tags, setDraftTask, setScreen } = useApp();
   const { 
     timeLeft, isActive, mode, duration, energyLevel, activeTaskIds,
     toggleTimer, resetTimer, setEnergyLevel,
@@ -227,6 +227,17 @@ export const Timer: React.FC = () => {
 
       {/* Controls */}
       <div className="flex items-center gap-4">
+        <button 
+          onClick={() => {
+            setDraftTask({});
+            setScreen('TASKS');
+          }}
+          className="p-3 rounded-full bg-zinc-900 text-zinc-400 hover:text-white transition-colors"
+          title="Agregar Tarea"
+        >
+          <Plus size={20} />
+        </button>
+
         <button 
           onClick={handleResetClick}
           className="p-3 rounded-full bg-zinc-900 text-zinc-400 hover:text-white transition-colors"

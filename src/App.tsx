@@ -10,21 +10,28 @@ import { Timer } from './components/Timer';
 import { TaskList } from './components/TaskList';
 import { Statistics } from './components/Statistics';
 import { History, IdeaList } from './components/HistoryAndIdeas';
-import { Home as HomeIcon, ListTodo, History as HistoryIcon, BarChart2, Lightbulb, X } from 'lucide-react';
+import { MedicationTab } from './components/MedicationTab';
+import { NotesTab } from './components/NotesTab';
+import { RemindersTab } from './components/RemindersTab';
+import { ChatBot } from './components/ChatBot';
+import { Home as HomeIcon, ListTodo, History as HistoryIcon, BarChart2, Lightbulb, Pill, StickyNote, Bell, X } from 'lucide-react';
 import { Home } from './components/Home';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './types';
 
-type Screen = 'HOME' | 'TASKS' | 'HISTORY' | 'STATS' | 'IDEAS';
+type Screen = 'HOME' | 'TASKS' | 'HISTORY' | 'STATS' | 'IDEAS' | 'MEDS' | 'NOTES';
 
 // Componente principal de navegación inferior
 const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> = ({ current, setScreen }) => {
   const items = [
     { id: 'HOME', icon: HomeIcon, label: 'Inicio' },
     { id: 'TASKS', icon: ListTodo, label: 'Tareas' },
+    { id: 'MEDS', icon: Pill, label: 'Meds' },
     { id: 'HISTORY', icon: HistoryIcon, label: 'Historial' },
     { id: 'STATS', icon: BarChart2, label: 'Stats' },
     { id: 'IDEAS', icon: Lightbulb, label: 'Ideas' },
+    { id: 'NOTES', icon: StickyNote, label: 'Notas' },
+    { id: 'REMINDERS', icon: Bell, label: 'Avisos' },
   ] as const;
 
   return (
@@ -80,6 +87,9 @@ function AppContent() {
       case 'HISTORY': return <History />;
       case 'STATS': return <Statistics />;
       case 'IDEAS': return <IdeaList />;
+      case 'MEDS': return <MedicationTab />;
+      case 'NOTES': return <NotesTab />;
+      case 'REMINDERS': return <RemindersTab />;
       default: return <Timer />;
     }
   };
@@ -119,6 +129,7 @@ function AppContent() {
       </main>
       {/* Barra de navegación inferior */}
       <Navigation current={currentScreen} setScreen={setScreen} />
+      <ChatBot />
     </div>
   );
 }

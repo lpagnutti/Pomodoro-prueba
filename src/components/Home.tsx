@@ -51,17 +51,6 @@ export const Home: React.FC = () => {
     <div className="flex flex-col w-full max-w-md mx-auto p-4 space-y-6">
       <Timer />
 
-      <button 
-        onClick={() => {
-          setDraftTask({});
-          setScreen('TASKS');
-        }}
-        className="w-full py-4 bg-zinc-900 border border-zinc-800 rounded-2xl flex items-center justify-center gap-2 text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors"
-      >
-        <Plus size={20} />
-        <span className="font-bold">Agregar Tarea</span>
-      </button>
-
       {/* Task Resolution Modal */}
       <AnimatePresence>
         {showFinishModal && (
