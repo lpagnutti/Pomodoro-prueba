@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie, LineChart, Line } from 'recharts';
 import { useApp } from '../AppContext';
 import { TrendingUp, Target, Award, Zap, Calendar, Filter, ChevronDown, PieChart as PieChartIcon } from 'lucide-react';
 import { TaskStatus, cn, EnergyLevel } from '../types';
@@ -19,25 +19,26 @@ const ENERGY_LABELS = {
 
 type Timeframe = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR';
 
+// Componente de visualización de estadísticas de productividad
 export const Statistics: React.FC = () => {
   const { sessions, tasks, stats, tags } = useApp();
   const [timeframe, setTimeframe] = useState<Timeframe>('DAY');
   const [selectedTag, setSelectedTag] = useState<string>('ALL');
 
-  // Helper to get date string
+  // Helper para obtener cadena de fecha
   const getDateStr = (date: Date) => date.toISOString().split('T')[0];
 
-  // Get range of dates based on timeframe
+  // Obtener rango de fechas basado en el periodo seleccionado
   const getDates = () => {
     const dates: string[] = [];
     const now = new Date();
     
     if (timeframe === 'DAY') {
-      // For day, we show hours
+      // Para el día, mostramos por horas
       for (let i = 23; i >= 0; i--) {
         const d = new Date();
         d.setHours(now.getHours() - i, 0, 0, 0);
-        dates.push(d.toISOString()); // Use ISO string for unique keys
+        dates.push(d.toISOString()); // Usar formato ISO para claves únicas
       }
     } else if (timeframe === 'WEEK') {
       for (let i = 6; i >= 0; i--) {
@@ -52,7 +53,7 @@ export const Statistics: React.FC = () => {
         dates.push(getDateStr(d));
       }
     } else {
-      // For year, we group by month
+      // Para el año, agrupamos por mes
       for (let i = 11; i >= 0; i--) {
         const d = new Date();
         d.setMonth(now.getMonth() - i);
@@ -182,25 +183,19 @@ export const Statistics: React.FC = () => {
     }).sort((a, b) => b.value - a.value); // Sort by value descending
   }, [periodTasks, tags]);
 
-  // Calculate energy distribution
+  // Calculate energy distribution over time
   const energyData = React.useMemo(() => {
-    const filteredSessions = sessions.filter(s => s.type === 'WORK');
-    const counts = {
-      [EnergyLevel.HIGH]: 0,
-      [EnergyLevel.NORMAL]: 0,
-      [EnergyLevel.LOW]: 0,
-    };
-    filteredSessions.forEach(s => {
-      if (s.energyLevel in counts) {
-        counts[s.energyLevel]++;
-      }
-    });
+    const filteredSessions = sessions
+      .filter(s => s.type === 'WORK')
+      .sort((a, b) => a.startTime - b.startTime);
 
-    return [
-      { name: ENERGY_LABELS[EnergyLevel.HIGH], value: counts[EnergyLevel.HIGH], color: ENERGY_COLORS[EnergyLevel.HIGH] },
-      { name: ENERGY_LABELS[EnergyLevel.NORMAL], value: counts[EnergyLevel.NORMAL], color: ENERGY_COLORS[EnergyLevel.NORMAL] },
-      { name: ENERGY_LABELS[EnergyLevel.LOW], value: counts[EnergyLevel.LOW], color: ENERGY_COLORS[EnergyLevel.LOW] },
-    ].filter(d => d.value > 0);
+    const energyMap = { [EnergyLevel.HIGH]: 3, [EnergyLevel.NORMAL]: 2, [EnergyLevel.LOW]: 1 };
+
+    return filteredSessions.map(s => ({
+      time: new Date(s.startTime).toLocaleTimeString('es-LA', { hour: '2-digit', minute: '2-digit' }),
+      energy: energyMap[s.energyLevel] || 0,
+      label: ENERGY_LABELS[s.energyLevel]
+    }));
   }, [sessions]);
 
   const CustomPieTooltip = ({ active, payload }: any) => {
@@ -209,7 +204,20 @@ export const Statistics: React.FC = () => {
       return (
         <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl shadow-xl">
           <p className="text-sm font-bold" style={{ color: data.color }}>{data.name}</p>
-          <p className="text-xs text-zinc-400 mt-1">{data.value} sesiones</p>
+          <p className="text-xs text-zinc-400 mt-1">{data.percentage}%</p>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  const CustomLineTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl shadow-xl">
+          <p className="text-xs text-zinc-400">{data.time}</p>
+          <p className="text-sm font-bold text-emerald-500 mt-1">{data.label}</p>
         </div>
       );
     }
@@ -366,30 +374,19 @@ export const Statistics: React.FC = () => {
         
         <div className="h-64 w-full relative">
           <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={energyData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={80}
-                paddingAngle={5}
-                dataKey="value"
-                stroke="none"
-              >
-                {energyData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.color} />
-                ))}
-              </Pie>
-              <Tooltip content={<CustomPieTooltip />} />
-            </PieChart>
+            <LineChart data={energyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
+              <XAxis dataKey="time" tick={{ fill: '#71717a', fontSize: 10 }} />
+              <YAxis 
+                domain={[0, 4]} 
+                ticks={[1, 2, 3]} 
+                tickFormatter={(val) => val === 3 ? 'Alta' : val === 2 ? 'Normal' : 'Baja'} 
+                tick={{ fill: '#71717a', fontSize: 10 }} 
+              />
+              <Tooltip content={<CustomLineTooltip />} />
+              <Line type="monotone" dataKey="energy" stroke="#f59e0b" strokeWidth={2} dot={{ r: 4 }} />
+            </LineChart>
           </ResponsiveContainer>
-          
-          {/* Center Text */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-3xl font-bold">{sessions.filter(s => s.type === 'WORK').length}</span>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Sesiones</span>
-          </div>
         </div>
       </div>
 

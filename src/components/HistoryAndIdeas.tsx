@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../AppContext';
 import { Lightbulb, Calendar, CheckCircle2, PlusCircle, Database, ChevronDown, ChevronUp } from 'lucide-react';
 
+// Componente de visualización de historial y lista de ideas
 export const History: React.FC = () => {
   const { tasks, tags, seedMockData } = useApp();
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
@@ -11,13 +12,14 @@ export const History: React.FC = () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  // Generate last 7 days
+  // Generar los últimos 7 días
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(today);
     d.setDate(d.getDate() - i);
     return d;
   });
 
+  // Alternar expansión de un día
   const toggleDay = (dateStr: string) => {
     setExpandedDays(prev => ({
       ...prev,
@@ -25,6 +27,7 @@ export const History: React.FC = () => {
     }));
   };
 
+  // Alternar expansión de una etiqueta dentro de un día
   const toggleTag = (dateStr: string, tagName: string) => {
     const key = `${dateStr}-${tagName}`;
     setExpandedTags(prev => ({
@@ -183,6 +186,7 @@ export const History: React.FC = () => {
   );
 };
 
+// Componente de lista de ideas
 export const IdeaList: React.FC = () => {
   const { ideas, convertIdeaToTask } = useApp();
 

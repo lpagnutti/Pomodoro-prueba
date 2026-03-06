@@ -23,6 +23,7 @@ export type Screen = 'HOME' | 'TASKS' | 'HISTORY' | 'STATS' | 'IDEAS';
 
 interface AppContextType {
   userId: string | null;
+  isAuthReady: boolean;
   tasks: Task[];
   ideas: Idea[];
   sessions: Session[];
@@ -67,22 +68,30 @@ interface AppContextType {
   };
 }
 
+// Contexto principal de la aplicación que gestiona el estado global,
+// autenticación y sincronización con Firebase Firestore.
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Proveedor del contexto que envuelve la aplicación y proporciona
+// acceso a los datos y funciones de gestión.
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Estado local para los datos de la aplicación
   const [userId, setUserId] = useState<string | null>(null);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [ideas, setIdeas] = useState<Idea[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [tags, setTags] = useState<Tag[]>(DEFAULT_TAGS);
   const [stats, setStats] = useState<UserStats>({ xp: 0, level: 1, totalPomodoros: 0 });
 
+  // Solicitar permiso para notificaciones al cargar la app
   useEffect(() => {
     if ('Notification' in window && Notification.permission !== 'granted') {
       Notification.requestPermission();
     }
   }, []);
 
+  // Escuchar cambios en el estado de autenticación de Firebase
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -90,6 +99,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setUserId(null);
       }
+      setIsAuthReady(true);
     });
     return unsubscribe;
   }, []);
@@ -132,6 +142,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [draftTask, setDraftTask] = useState<Partial<Task> | null>(null);
 
+  // Añade una nueva tarea a Firestore
   const addTask = async (task: Partial<Task>) => {
     if (!userId) return;
     const newTask: Task = {
@@ -156,6 +167,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await setDoc(doc(db, 'users', userId, 'tasks', newTask.id), newTask);
   };
 
+  // Actualiza una tarea existente en Firestore
   const updateTask = async (id: string, updates: Partial<Task>) => {
     if (!userId) return;
     
@@ -170,6 +182,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await updateDoc(doc(db, 'users', userId, 'tasks', id), cleanedUpdates as any);
   };
 
+  // Elimina una tarea de Firestore
   const deleteTask = async (id: string) => {
     if (!userId) return;
     await deleteDoc(doc(db, 'users', userId, 'tasks', id));
@@ -429,6 +442,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   return (
     <AppContext.Provider value={{ 
       userId,
+      isAuthReady,
       tasks, ideas, sessions, stats, tags,
       currentScreen, setScreen,
       tasksToResolve, setTasksToResolve,

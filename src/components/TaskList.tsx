@@ -23,6 +23,7 @@ const formatPomodoros = (num: number | undefined) => {
   return num % 1 === 0 ? num.toString() : num.toFixed(1);
 };
 
+// Componente principal para gestionar tareas
 export const TaskList: React.FC = () => {
   const { tasks, addTask, updateTask, deleteTask, completeTask, tags, addTag, updateTag, deleteTag, draftTask, setDraftTask } = useApp();
   const [showAddForm, setShowAddForm] = useState(false);

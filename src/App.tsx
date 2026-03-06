@@ -17,6 +17,7 @@ import { cn } from './types';
 
 type Screen = 'HOME' | 'TASKS' | 'HISTORY' | 'STATS' | 'IDEAS';
 
+// Componente principal de navegación inferior
 const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> = ({ current, setScreen }) => {
   const items = [
     { id: 'HOME', icon: HomeIcon, label: 'Inicio' },
@@ -47,9 +48,16 @@ const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> 
   );
 };
 
+// Componente que renderiza el contenido principal basado en la pantalla actual
 function AppContent() {
-  const { currentScreen, setScreen, userId, signIn } = useApp();
+  const { currentScreen, setScreen, userId, isAuthReady, signIn } = useApp();
 
+  // Si aún estamos comprobando la autenticación, mostrar una pantalla de carga o nada
+  if (!isAuthReady) {
+    return <div className="min-h-screen bg-black text-white flex items-center justify-center">Cargando...</div>;
+  }
+
+  // Si no hay usuario autenticado, mostrar pantalla de inicio de sesión
   if (!userId) {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
@@ -64,6 +72,7 @@ function AppContent() {
     );
   }
 
+  // Renderiza el componente correspondiente a la pantalla seleccionada
   const renderScreen = () => {
     switch (currentScreen) {
       case 'HOME': return <Home />;
@@ -78,6 +87,7 @@ function AppContent() {
   return (
     <div className="min-h-screen bg-black text-white font-sans selection:bg-emerald-500/30">
       <main className="pb-24">
+        {/* Animaciones de transición entre pantallas */}
         <AnimatePresence mode="wait">
           <motion.div
             key={currentScreen}
@@ -90,11 +100,13 @@ function AppContent() {
           </motion.div>
         </AnimatePresence>
       </main>
+      {/* Barra de navegación inferior */}
       <Navigation current={currentScreen} setScreen={setScreen} />
     </div>
   );
 }
 
+// Componente raíz que envuelve la aplicación con el proveedor de contexto
 export default function App() {
   return (
     <AppProvider>

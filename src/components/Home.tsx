@@ -7,10 +7,12 @@ import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { MOTIVATIONAL_QUOTES } from '../constants/quotes';
 
+// Componente principal de la pantalla de inicio
 export const Home: React.FC = () => {
   const { tasks, setDraftTask, setScreen, tasksToResolve, setTasksToResolve, showFinishModal, setShowFinishModal, completeTask } = useApp();
   const [quote, setQuote] = useState('');
 
+  // Efecto para mostrar confeti y una cita motivacional al terminar un Pomodoro
   useEffect(() => {
     if (showFinishModal && !quote) {
       confetti({
@@ -27,6 +29,7 @@ export const Home: React.FC = () => {
   const currentTaskToResolveId = tasksToResolve[0];
   const task = tasks.find(t => t.id === currentTaskToResolveId);
 
+  // Maneja la resolución de tareas al terminar un Pomodoro
   const handleResolve = (completed: boolean) => {
     if (completed && task) {
       completeTask(task.id);
@@ -38,6 +41,7 @@ export const Home: React.FC = () => {
     }
   };
 
+  // Cierra el modal de finalización
   const handleCloseFinishModal = () => {
     setTasksToResolve([]);
     setShowFinishModal(false);
