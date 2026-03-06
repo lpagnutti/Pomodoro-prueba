@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie, LineChart, Line } from 'recharts';
-import { useApp } from '../AppContext';
+import { useApp } from '../hooks/useAppFacade';
 import { TrendingUp, Target, Award, Zap, Calendar, Filter, ChevronDown, PieChart as PieChartIcon, Clock, Flame, Star } from 'lucide-react';
 import { TaskStatus, cn, EnergyLevel } from '../types';
 

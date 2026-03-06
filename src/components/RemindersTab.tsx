@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useApp } from '../AppContext';
+import { useApp } from '../hooks/useAppFacade';
 import { Bell, Plus, Trash2, CheckCircle2, Circle, Calendar, Clock, X } from 'lucide-react';
 
 export const RemindersTab: React.FC = () => {

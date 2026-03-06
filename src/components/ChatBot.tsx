@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { MessageSquare, Send, X, Bot, User, Sparkles, Loader2 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
-import { useApp } from '../AppContext';
+import { useApp } from '../hooks/useAppFacade';
 
 interface Message {
   role: 'user' | 'model';

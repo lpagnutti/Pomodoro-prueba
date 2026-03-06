@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useApp } from '../AppContext';
+import { useApp } from '../hooks/useAppFacade';
 import { StickyNote, Plus, Trash2, Search, Calendar, Heart, MessageSquare, ChevronDown, ChevronUp, Clock } from 'lucide-react';
 
 export const NotesTab: React.FC = () => {

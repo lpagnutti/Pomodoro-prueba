@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useApp } from '../AppContext';
+import { useApp } from '../hooks/useAppFacade';
 import { Pill, Plus, Trash2, Clock, Info, CheckCircle2, AlertCircle, ChevronDown, ChevronUp, History } from 'lucide-react';
 import { Medication } from '../types';
 

@@ -2,20 +2,46 @@ import React, { useState, useEffect } from 'react';
 import { Timer } from './Timer';
 import { TaskList } from './TaskList';
 import { Plus, CheckCircle2, X, Bell, Calendar, Clock, Pill } from 'lucide-react';
-import { useApp } from '../AppContext';
+import { useStore } from '../store/useStore';
+import { useTasks, useUpdateTask } from '../hooks/useTasks';
+import { useReminders, useCompleteReminder, useUpdateReminder } from '../hooks/useReminders';
+import { useMedications, useMedicationLogs, useTakeMedication } from '../hooks/useMedications';
 import { motion, AnimatePresence } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { MOTIVATIONAL_QUOTES } from '../constants/quotes';
+import { TaskStatus } from '../types';
 
 // Componente principal de la pantalla de inicio
 export const Home: React.FC = () => {
-  const { 
-    tasks, setDraftTask, setScreen, tasksToResolve, setTasksToResolve, 
-    showFinishModal, setShowFinishModal, completeTask,
-    activeReminder, setActiveReminder, reminders, completeReminder, updateReminder,
-    activeMedicationReminder, setActiveMedicationReminder, takeMedication,
-    medications, medicationLogs
-  } = useApp();
+  const userId = useStore(state => state.userId);
+  const setDraftTask = useStore(state => state.setDraftTask);
+  const setScreen = useStore(state => state.setScreen);
+  const tasksToResolve = useStore(state => state.tasksToResolve);
+  const setTasksToResolve = useStore(state => state.setTasksToResolve);
+  const showFinishModal = useStore(state => state.showFinishModal);
+  const setShowFinishModal = useStore(state => state.setShowFinishModal);
+  const activeReminder = useStore(state => state.activeReminder);
+  const setActiveReminder = useStore(state => state.setActiveReminder);
+  const activeMedicationReminder = useStore(state => state.activeMedicationReminder);
+  const setActiveMedicationReminder = useStore(state => state.setActiveMedicationReminder);
+
+  const { data: tasks = [] } = useTasks(userId);
+  const { data: reminders = [] } = useReminders(userId);
+  const { data: medications = [] } = useMedications(userId);
+  const { data: medicationLogs = [] } = useMedicationLogs(userId);
+
+  const updateTaskMutation = useUpdateTask(userId);
+  const completeReminderMutation = useCompleteReminder(userId);
+  const updateReminderMutation = useUpdateReminder(userId);
+  const takeMedicationMutation = useTakeMedication(userId);
+
+  const completeTask = (id: string) => updateTaskMutation.mutate({ id, updates: { status: TaskStatus.COMPLETED, completedAt: Date.now() } });
+  const completeReminder = completeReminderMutation.mutate;
+  const updateReminder = (id: string, updates: any) => updateReminderMutation.mutate({ id, updates });
+  const takeMedication = (id: string) => {
+    const med = medications.find(m => m.id === id);
+    if (med) takeMedicationMutation.mutate({ id, med });
+  };
   const [quote, setQuote] = useState('');
   const [showSnoozeOptions, setShowSnoozeOptions] = useState(false);
   const canvasRef = React.useRef<HTMLCanvasElement>(null);

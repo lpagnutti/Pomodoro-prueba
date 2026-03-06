@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, Minus, CheckCircle2, Circle, Trash2, Tag, Folder, BarChart3, ChevronDown, ChevronUp, Palette, Edit2, Calendar as CalendarIcon } from 'lucide-react';
-import { useApp, TAG_COLORS } from '../AppContext';
+import { useStore } from '../store/useStore';
+import { useTasks, useAddTask, useUpdateTask, useDeleteTask } from '../hooks/useTasks';
+import { useTags, useAddTag, useUpdateTag, useDeleteTag } from '../hooks/useTags';
+import { TAG_COLORS } from '../constants';
 import { TaskStatus, Task, cn } from '../types';
 
 const getRelativeTimeLabel = (timestamp: number, today: Date) => {
@@ -25,7 +28,30 @@ const formatPomodoros = (num: number | undefined) => {
 
 // Componente principal para gestionar tareas
 export const TaskList: React.FC = () => {
-  const { tasks, addTask, updateTask, deleteTask, completeTask, tags, addTag, updateTag, deleteTag, draftTask, setDraftTask } = useApp();
+  const userId = useStore(state => state.userId);
+  const draftTask = useStore(state => state.draftTask);
+  const setDraftTask = useStore(state => state.setDraftTask);
+
+  const { data: tasks = [] } = useTasks(userId);
+  const { data: tags = [] } = useTags(userId);
+  
+  const addTaskMutation = useAddTask(userId);
+  const updateTaskMutation = useUpdateTask(userId);
+  const deleteTaskMutation = useDeleteTask(userId);
+  
+  const addTagMutation = useAddTag(userId, tags);
+  const updateTagMutation = useUpdateTag(userId);
+  const deleteTagMutation = useDeleteTag(userId);
+
+  const addTask = addTaskMutation.mutate;
+  const updateTask = (id: string, updates: Partial<Task>) => updateTaskMutation.mutate({ id, updates });
+  const deleteTask = deleteTaskMutation.mutate;
+  const completeTask = (id: string) => updateTaskMutation.mutate({ id, updates: { status: TaskStatus.COMPLETED, completedAt: Date.now() } });
+  
+  const addTag = (name: string, color?: string) => addTagMutation.mutate({ name, color });
+  const updateTag = (id: string, updates: any) => updateTagMutation.mutate({ id, updates });
+  const deleteTag = deleteTagMutation.mutate;
+
   const [showAddForm, setShowAddForm] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [showFuture, setShowFuture] = useState(false);

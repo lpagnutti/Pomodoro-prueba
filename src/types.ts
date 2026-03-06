@@ -5,6 +5,8 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export type Screen = 'HOME' | 'TIMER' | 'TASKS' | 'HISTORY' | 'STATS' | 'IDEAS' | 'MEDICATIONS' | 'NOTES' | 'REMINDERS';
+
 export enum TaskStatus {
   PENDING = 'PENDING',
   IN_PROGRESS = 'IN_PROGRESS',

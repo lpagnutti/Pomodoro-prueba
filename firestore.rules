@@ -126,33 +126,14 @@ service cloud.firestore {
        return request.resource.data.keys().hasAll(fields);
     }
 
+    function hasOnlyAllowedFields(fields) {
+       return request.resource.data.keys().hasOnly(fields);
+    }
+
     function validStringLength(field, minLen, maxLen) {
        return request.resource.data[field] is string &&
          request.resource.data[field].size() >= minLen &&
          request.resource.data[field].size() <= maxLen;
-    }
-
-    function isValidStatus(status) {
-      return status in ['PENDING', 'IN_PROGRESS', 'COMPLETED'];
-    }
-
-    function isValidEnergyLevel(level) {
-      return level in ['HIGH', 'NORMAL', 'LOW'];
-    }
-
-    function isValidSessionType(type) {
-      return type in ['WORK', 'BREAK'];
-    }
-
-    function isValidTimer(data) {
-      return data.timeLeft is number && data.timeLeft >= 0 &&
-             data.isActive is bool &&
-             isValidSessionType(data.mode) &&
-             data.duration is number && data.duration > 0 &&
-             isValidEnergyLevel(data.energyLevel) &&
-             data.activeTaskIds is list &&
-             data.sessionTaskIds is list &&
-             data.updatedAt is number;
     }
 
     // ===============================================================
@@ -163,48 +144,78 @@ service cloud.firestore {
       allow read, write: if isOwner(userId);
 
       match /tasks/{taskId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'name', 'userId']) && validStringLength('name', 1, 100) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && hasOnlyAllowedFields(['id', 'name', 'tag', 'tags', 'estimatedPomodoros', 'actualPomodoros', 'status', 'createdAt', 'completedAt', 'taskDate', 'userId']) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
       }
 
       match /ideas/{ideaId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'text', 'userId']) && validStringLength('text', 1, 1000) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && hasOnlyAllowedFields(['id', 'text', 'createdAt', 'userId']) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
       }
 
       match /sessions/{sessionId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'startTime', 'userId']) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
       }
 
       match /tags/{tagId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'name', 'userId']) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
       }
 
       match /stats/{statsId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['userId']) && request.resource.data.userId == userId;
+        allow update: if isOwner(userId) && request.resource.data.userId == userId;
+        allow delete: if isOwner(userId);
       }
 
       match /timer/{timerId} {
         allow read: if isOwner(userId);
-        allow write: if isOwner(userId) && isValidTimer(request.resource.data);
+        allow write: if isOwner(userId);
       }
 
       match /medications/{medicationId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'name', 'dose', 'stock']);
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
       }
 
       match /medicationLogs/{logId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'medicationId', 'takenAt']);
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
       }
 
       match /notes/{noteId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'content', 'createdAt']);
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
       }
 
       match /moodLogs/{logId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'mood', 'createdAt']);
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
       }
 
       match /reminders/{reminderId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && hasRequiredFields(['id', 'title', 'datetime', 'completed']);
+        allow update: if isOwner(userId);
+        allow delete: if isOwner(userId);
       }
     }
   }

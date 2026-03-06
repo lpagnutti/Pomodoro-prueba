@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useApp } from '../AppContext';
+import { useStore } from '../store/useStore';
+import { useTasks } from '../hooks/useTasks';
+import { useTags } from '../hooks/useTags';
+import { useIdeas, useAddIdea, useDeleteIdea } from '../hooks/useIdeas';
+import { useApp } from '../hooks/useAppFacade';
 import { Lightbulb, Calendar, CheckCircle2, PlusCircle, Database, ChevronDown, ChevronUp, Trash2, Sparkles, X, Clock, ListTodo, Bell } from 'lucide-react';
 
 const formatPomodoros = (num: number | undefined) => {
@@ -10,7 +14,11 @@ const formatPomodoros = (num: number | undefined) => {
 
 // Componente de visualización de historial y lista de ideas
 export const History: React.FC = () => {
-  const { tasks, tags, seedMockData } = useApp();
+  const userId = useStore(state => state.userId);
+  const { data: tasks = [] } = useTasks(userId);
+  const { data: tags = [] } = useTags(userId);
+  // const seedMockData = useStore(state => state.seedMockData); // TODO: implement seedMockData if needed
+  
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
   const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({});
 
@@ -46,7 +54,7 @@ export const History: React.FC = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Historial</h2>
         <button 
-          onClick={() => seedMockData()}
+          onClick={() => {}} // seedMockData()
           className="p-2 bg-zinc-900 border border-zinc-800 rounded-xl text-zinc-500 hover:text-emerald-500 transition-colors"
           title="Generar datos de prueba"
         >

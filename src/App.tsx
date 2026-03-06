@@ -3,30 +3,33 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { AppProvider } from './AppContext';
-import { useApp } from './AppContext';
-import { Timer } from './components/Timer';
-import { TaskList } from './components/TaskList';
-import { Statistics } from './components/Statistics';
-import { History, IdeaList } from './components/HistoryAndIdeas';
-import { MedicationTab } from './components/MedicationTab';
-import { NotesTab } from './components/NotesTab';
-import { RemindersTab } from './components/RemindersTab';
-import { ChatBot } from './components/ChatBot';
+import React, { useState, Suspense, lazy } from 'react';
+import { useStore } from './store/useStore';
+import { GlobalEffects } from './components/GlobalEffects';
 import { Home as HomeIcon, ListTodo, History as HistoryIcon, BarChart2, Lightbulb, Pill, StickyNote, Bell, X } from 'lucide-react';
-import { Home } from './components/Home';
 import { motion, AnimatePresence } from 'framer-motion';
-import { cn } from './types';
+import { cn, Screen } from './types';
+import { auth } from './firebase';
+import { signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 
-type Screen = 'HOME' | 'TASKS' | 'HISTORY' | 'STATS' | 'IDEAS' | 'MEDS' | 'NOTES';
+// Lazy loaded components
+const Home = lazy(() => import('./components/Home').then(m => ({ default: m.Home })));
+const Timer = lazy(() => import('./components/Timer').then(m => ({ default: m.Timer })));
+const TaskList = lazy(() => import('./components/TaskList').then(m => ({ default: m.TaskList })));
+const Statistics = lazy(() => import('./components/Statistics').then(m => ({ default: m.Statistics })));
+const History = lazy(() => import('./components/HistoryAndIdeas').then(m => ({ default: m.History })));
+const IdeaList = lazy(() => import('./components/HistoryAndIdeas').then(m => ({ default: m.IdeaList })));
+const MedicationTab = lazy(() => import('./components/MedicationTab').then(m => ({ default: m.MedicationTab })));
+const NotesTab = lazy(() => import('./components/NotesTab').then(m => ({ default: m.NotesTab })));
+const RemindersTab = lazy(() => import('./components/RemindersTab').then(m => ({ default: m.RemindersTab })));
+const ChatBot = lazy(() => import('./components/ChatBot').then(m => ({ default: m.ChatBot })));
 
 // Componente principal de navegación inferior
 const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> = ({ current, setScreen }) => {
   const items = [
     { id: 'HOME', icon: HomeIcon, label: 'Inicio' },
     { id: 'TASKS', icon: ListTodo, label: 'Tareas' },
-    { id: 'MEDS', icon: Pill, label: 'Meds' },
+    { id: 'MEDICATIONS', icon: Pill, label: 'Meds' },
     { id: 'HISTORY', icon: HistoryIcon, label: 'Historial' },
     { id: 'STATS', icon: BarChart2, label: 'Stats' },
     { id: 'IDEAS', icon: Lightbulb, label: 'Ideas' },
@@ -40,7 +43,7 @@ const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> 
         {items.map((item) => (
           <button
             key={item.id}
-            onClick={() => setScreen(item.id)}
+            onClick={() => setScreen(item.id as Screen)}
             className={cn(
               "flex flex-col items-center gap-1 transition-all",
               current === item.id ? "text-emerald-500 scale-110" : "text-zinc-500 hover:text-zinc-300"
@@ -57,7 +60,20 @@ const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> 
 
 // Componente que renderiza el contenido principal basado en la pantalla actual
 function AppContent() {
-  const { currentScreen, setScreen, userId, isAuthReady, signIn, error, setError } = useApp();
+  const currentScreen = useStore(state => state.currentScreen);
+  const setScreen = useStore(state => state.setScreen);
+  const userId = useStore(state => state.userId);
+  const isAuthReady = useStore(state => state.isAuthReady);
+  const error = useStore(state => state.error);
+  const setError = useStore(state => state.setError);
+
+  const signIn = async () => {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (error) {
+      console.error("Error signing in with Google:", error);
+    }
+  };
 
   // Si aún estamos comprobando la autenticación, mostrar una pantalla de carga o nada
   if (!isAuthReady) {
@@ -87,7 +103,7 @@ function AppContent() {
       case 'HISTORY': return <History />;
       case 'STATS': return <Statistics />;
       case 'IDEAS': return <IdeaList />;
-      case 'MEDS': return <MedicationTab />;
+      case 'MEDICATIONS': return <MedicationTab />;
       case 'NOTES': return <NotesTab />;
       case 'REMINDERS': return <RemindersTab />;
       default: return <Timer />;
@@ -123,13 +139,17 @@ function AppContent() {
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
           >
-            {renderScreen()}
+            <Suspense fallback={<div className="flex items-center justify-center p-12 text-zinc-500">Cargando...</div>}>
+              {renderScreen()}
+            </Suspense>
           </motion.div>
         </AnimatePresence>
       </main>
       {/* Barra de navegación inferior */}
       <Navigation current={currentScreen} setScreen={setScreen} />
-      <ChatBot />
+      <Suspense fallback={null}>
+        <ChatBot />
+      </Suspense>
     </div>
   );
 }
@@ -137,8 +157,9 @@ function AppContent() {
 // Componente raíz que envuelve la aplicación con el proveedor de contexto
 export default function App() {
   return (
-    <AppProvider>
+    <>
+      <GlobalEffects />
       <AppContent />
-    </AppProvider>
+    </>
   );
 }

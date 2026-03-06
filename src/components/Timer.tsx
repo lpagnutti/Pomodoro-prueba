@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Play, Pause, RotateCcw, Zap, Coffee, Lightbulb, Brain, ChevronRight, Plus, CheckCircle2, Bell, BellOff } from 'lucide-react';
-import { useApp } from '../AppContext';
+import { useStore } from '../store/useStore';
+import { useTasks } from '../hooks/useTasks';
+import { useIdeas, useAddIdea } from '../hooks/useIdeas';
+import { useTags } from '../hooks/useTags';
+import { useTimerActions } from '../hooks/useTimerActions';
 import { EnergyLevel, TaskStatus } from '../types';
 import { ENERGY_LABELS, DEFAULT_POMODORO_DURATION, INERTIA_DURATION } from '../constants';
 import { cn } from '../types';
@@ -12,13 +16,24 @@ const formatPomodoros = (num: number | undefined) => {
 };
 
 export const Timer: React.FC = () => {
-  const { tasks, addIdea, suggestedTasks, timer, tags, setDraftTask, setScreen } = useApp();
   const { 
     timeLeft, isActive, mode, duration, energyLevel, activeTaskIds,
-    toggleTimer, resetTimer, setEnergyLevel,
+    setEnergyLevel, setDraftTask, setScreen
+  } = useStore();
+  
+  const userId = useStore(state => state.userId);
+  const { data: tasks = [] } = useTasks(userId);
+  const { data: tags = [] } = useTags(userId);
+  const addIdeaMutation = useAddIdea(userId);
+  
+  const { 
+    toggleTimer, resetTimer, completeTask,
     setTimerDuration, handleFinishTaskEarly, toggleTaskSelection,
     requestNotificationPermission
-  } = timer;
+  } = useTimerActions();
+
+  const addIdea = addIdeaMutation.mutate;
+  const suggestedTasks = tasks.filter(t => t.status !== TaskStatus.COMPLETED).slice(0, 3);
 
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 

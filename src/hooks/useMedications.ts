@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Medication, MedicationLog } from '../types';
 import { useEffect } from 'react';
@@ -137,9 +137,20 @@ export function useTakeMedication(userId: string | null) {
         dose: med.dose,
       };
 
-      await setDoc(doc(db, 'users', userId, 'medicationLogs', newLog.id), newLog);
-      await updateDoc(doc(db, 'users', userId, 'medications', id), {
-        stock: Math.max(0, med.stock - 1)
+      const medRef = doc(db, 'users', userId, 'medications', id);
+      const logRef = doc(db, 'users', userId, 'medicationLogs', newLog.id);
+
+      await runTransaction(db, async (transaction) => {
+        const medDoc = await transaction.get(medRef);
+        if (!medDoc.exists()) {
+          throw new Error("Medication does not exist!");
+        }
+
+        const currentStock = medDoc.data().stock || 0;
+        const newStock = Math.max(0, currentStock - 1);
+
+        transaction.update(medRef, { stock: newStock });
+        transaction.set(logRef, newLog);
       });
       
       return { newLog, med };
