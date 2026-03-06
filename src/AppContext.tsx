@@ -44,8 +44,10 @@ interface AppContextType {
   stats: UserStats;
   currentScreen: Screen;
   setScreen: (screen: Screen) => void;
-  taskToResolve: string | null;
-  setTaskToResolve: (id: string | null) => void;
+  tasksToResolve: string[];
+  setTasksToResolve: (ids: string[]) => void;
+  showFinishModal: boolean;
+  setShowFinishModal: (show: boolean) => void;
   draftTask: Partial<Task> | null;
   setDraftTask: (task: Partial<Task> | null) => void;
   addTask: (task: Partial<Task>) => void;
@@ -69,7 +71,7 @@ interface AppContextType {
     activeTaskIds: string[];
     sessionTaskIds: string[];
     toggleTimer: () => void;
-    resetTimer: () => void;
+    resetTimer: (options?: { reason?: 'FINISHED_EARLY' | 'INTERRUPTION' | 'DISTRACTION' | 'SKIP' }) => void;
     setEnergyLevel: (level: EnergyLevel) => void;
     setActiveTaskIds: (ids: string[] | ((prev: string[]) => string[])) => void;
     setTimerDuration: (minutes: number) => void;
@@ -114,7 +116,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [currentScreen, setScreen] = useState<Screen>('HOME');
-  const [taskToResolve, setTaskToResolve] = useState<string | null>(null);
+  const [tasksToResolve, setTasksToResolve] = useState<string[]>([]);
+  const [showFinishModal, setShowFinishModal] = useState(false);
   const [draftTask, setDraftTask] = useState<Partial<Task> | null>(null);
 
   useEffect(() => {
@@ -337,8 +340,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       
       // Prompt for task resolution if tasks were worked on
       if (sessionTaskIds.length > 0) {
-        setTaskToResolve(sessionTaskIds[0]);
+        setTasksToResolve([...sessionTaskIds]);
       }
+      setShowFinishModal(true);
       
       setMode('BREAK');
       setTimeLeft(5 * 60);
@@ -388,19 +392,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
   
-  const resetTimer = () => {
-    if (isActive && mode === 'WORK') {
-      // If resetting during work, count it as a spent session (partial duration)
+  const resetTimer = (options?: { reason?: 'FINISHED_EARLY' | 'INTERRUPTION' | 'DISTRACTION' | 'SKIP' }) => {
+    if (mode === 'WORK') {
       const elapsedMinutes = (duration * 60 - timeLeft) / 60;
-      if (elapsedMinutes > 0.1) { // Only count if at least 6 seconds passed
-        addSession({
-          id: crypto.randomUUID(),
-          startTime: Date.now() - (elapsedMinutes * 60 * 1000),
-          duration: elapsedMinutes,
-          energyLevel,
-          type: 'WORK',
-          tasksWorkedOn: sessionTaskIds
-        });
+      
+      if (options?.reason !== 'SKIP' && elapsedMinutes > 0.1) {
+        if (options?.reason === 'FINISHED_EARLY' || options?.reason === 'INTERRUPTION') {
+          addSession({
+            id: crypto.randomUUID(),
+            startTime: Date.now() - (elapsedMinutes * 60 * 1000),
+            duration: elapsedMinutes,
+            energyLevel,
+            type: 'WORK',
+            tasksWorkedOn: sessionTaskIds
+          });
+        }
+        
+        if (options?.reason === 'DISTRACTION') {
+          setStats(prev => ({
+            ...prev,
+            xp: Math.max(0, prev.xp - 10) // Penalización de XP
+          }));
+        }
+
+        if (options?.reason === 'FINISHED_EARLY') {
+          // Mark tasks as completed automatically
+          sessionTaskIds.forEach(id => completeTask(id));
+          
+          setShowFinishModal(true);
+          
+          setMode('BREAK');
+          setTimeLeft(5 * 60);
+          setIsActive(false);
+          setExpectedEndTime(null);
+          return; // Exit early to not clear sessionTaskIds
+        }
       }
     }
     setIsActive(false);
@@ -460,7 +486,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     <AppContext.Provider value={{ 
       tasks, ideas, sessions, stats, tags,
       currentScreen, setScreen,
-      taskToResolve, setTaskToResolve,
+      tasksToResolve, setTasksToResolve,
+      showFinishModal, setShowFinishModal,
       draftTask, setDraftTask,
       addTask, updateTask, deleteTask, addIdea, addSession, completeTask,
       convertIdeaToTask,

@@ -6,6 +6,11 @@ import { EnergyLevel, TaskStatus } from '../types';
 import { ENERGY_LABELS, DEFAULT_POMODORO_DURATION, INERTIA_DURATION } from '../constants';
 import { cn } from '../types';
 
+const formatPomodoros = (num: number | undefined) => {
+  if (num === undefined || num === null) return '0';
+  return num % 1 === 0 ? num.toString() : num.toFixed(1);
+};
+
 export const Timer: React.FC = () => {
   const { tasks, addIdea, suggestedTasks, timer, tags } = useApp();
   const { 
@@ -23,6 +28,7 @@ export const Timer: React.FC = () => {
 
   const [showIdeaInput, setShowIdeaInput] = useState(false);
   const [ideaText, setIdeaText] = useState('');
+  const [showResetModal, setShowResetModal] = useState(false);
   
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -36,6 +42,26 @@ export const Timer: React.FC = () => {
       audioRef.current?.play();
     }
   }, [timeLeft]);
+
+  const handleResetClick = () => {
+    if (!isActive && timeLeft === duration * 60) return;
+
+    const totalDuration = duration * 60;
+    const elapsedTime = totalDuration - timeLeft;
+    const percentage = elapsedTime / totalDuration;
+
+    if (mode === 'WORK' && percentage >= 0.05) {
+      if (isActive) toggleTimer(); // Pause the timer
+      setShowResetModal(true);
+    } else {
+      resetTimer({ reason: 'SKIP' }); // Less than 5%, don't save session
+    }
+  };
+
+  const handleResetConfirm = (reason: 'FINISHED_EARLY' | 'INTERRUPTION' | 'DISTRACTION') => {
+    resetTimer({ reason });
+    setShowResetModal(false);
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -55,8 +81,48 @@ export const Timer: React.FC = () => {
     }
   };
 
-  const [showTaskPicker, setShowTaskPicker] = useState(false);
   const [taskToFinish, setTaskToFinish] = useState<string | null>(null);
+  const [showOverdue, setShowOverdue] = useState(false);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayTime = today.getTime();
+
+  const pendingTasks = tasks.filter(t => t.status !== TaskStatus.COMPLETED && !activeTaskIds.includes(t.id));
+  
+  const isBeforeToday = (timestamp: number) => {
+    const d = new Date(timestamp);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() < todayTime;
+  };
+
+  const isTodayOrFuture = (timestamp: number) => {
+    const d = new Date(timestamp);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime() >= todayTime;
+  };
+
+  const overdueTasks = pendingTasks.filter(t => {
+    if (t.taskDate) {
+      return isBeforeToday(t.taskDate);
+    }
+    return isBeforeToday(t.createdAt);
+  });
+  
+  const defaultTasks = pendingTasks.filter(t => {
+    if (t.taskDate) {
+      return isTodayOrFuture(t.taskDate);
+    }
+    return isTodayOrFuture(t.createdAt);
+  }); // Las actuales como default
+
+  useEffect(() => {
+    if (showOverdue && overdueTasks.length === 0) {
+      setShowOverdue(false);
+    }
+  }, [overdueTasks.length, showOverdue]);
+
+  const tasksToDisplay = showOverdue ? overdueTasks : defaultTasks;
 
   return (
     <div className="flex flex-col items-center w-full max-w-md mx-auto p-4 space-y-4">
@@ -148,7 +214,7 @@ export const Timer: React.FC = () => {
       {/* Controls */}
       <div className="flex items-center gap-4">
         <button 
-          onClick={resetTimer}
+          onClick={handleResetClick}
           className="p-3 rounded-full bg-zinc-900 text-zinc-400 hover:text-white transition-colors"
         >
           <RotateCcw size={20} />
@@ -176,18 +242,75 @@ export const Timer: React.FC = () => {
 
       {/* Quick Actions - REMOVED AS REQUESTED */}
 
+      {/* Reset Justification Modal */}
+      <AnimatePresence>
+        {showResetModal && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center p-6 bg-black/80 backdrop-blur-md"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="w-full max-w-sm bg-zinc-900 border border-zinc-800 rounded-3xl p-6 text-center"
+            >
+              <div className="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <RotateCcw className="text-amber-500" size={32} />
+              </div>
+              <h3 className="text-xl font-bold mb-2">¿Por qué reinicias?</h3>
+              <p className="text-zinc-500 text-sm mb-6">
+                Has avanzado más del 5% del pomodoro. ¿Qué sucedió?
+              </p>
+              <div className="flex flex-col gap-3">
+                <button 
+                  onClick={() => handleResetConfirm('FINISHED_EARLY')}
+                  className="w-full p-4 rounded-2xl bg-zinc-800 text-zinc-300 font-medium hover:bg-zinc-700 transition-colors text-left"
+                >
+                  ✅ Terminé la tarea antes
+                </button>
+                <button 
+                  onClick={() => handleResetConfirm('INTERRUPTION')}
+                  className="w-full p-4 rounded-2xl bg-zinc-800 text-zinc-300 font-medium hover:bg-zinc-700 transition-colors text-left"
+                >
+                  📞 Tuve una interrupción importante
+                </button>
+                <button 
+                  onClick={() => handleResetConfirm('DISTRACTION')}
+                  className="w-full p-4 rounded-2xl bg-zinc-800 text-zinc-300 font-medium hover:bg-zinc-700 transition-colors text-left"
+                >
+                  📱 Me distraje / Procrastiné
+                </button>
+                <button 
+                  onClick={() => setShowResetModal(false)}
+                  className="w-full p-4 rounded-2xl bg-transparent text-zinc-500 font-bold hover:text-zinc-300 transition-colors mt-2"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Active Tasks or Suggested Tasks */}
       <div className="w-full space-y-4">
         <div className="flex items-center justify-between px-1">
           <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
             {activeTaskIds.length > 0 ? 'Trabajando en' : 'Tareas Pendientes'}
           </span>
-          <button 
-            onClick={() => setShowTaskPicker(true)}
-            className="text-[9px] font-bold uppercase tracking-widest text-emerald-500 hover:text-emerald-400"
-          >
-            Ver todas
-          </button>
+          {overdueTasks.length > 0 && (
+            <button 
+              onClick={() => setShowOverdue(!showOverdue)}
+              className={cn(
+                "text-[9px] font-bold uppercase tracking-widest transition-colors",
+                showOverdue ? "text-amber-500 hover:text-amber-400" : "text-zinc-500 hover:text-amber-500"
+              )}
+            >
+              {showOverdue ? 'Ver Actuales' : `${overdueTasks.length} Atrasadas`}
+            </button>
+          )}
         </div>
         
         <div className="space-y-2">
@@ -225,8 +348,7 @@ export const Timer: React.FC = () => {
           })}
 
           {/* Then some pending tasks to select */}
-          {tasks
-            .filter(t => t.status !== TaskStatus.COMPLETED && !activeTaskIds.includes(t.id))
+          {tasksToDisplay
             .slice(0, 5)
             .map(task => {
               const taskTag = tags.find(t => t.name === task.tag);
@@ -241,7 +363,7 @@ export const Timer: React.FC = () => {
                   <div className="flex-1 text-left min-w-0">
                     <div className="flex items-center justify-between mb-0.5">
                       <span className="text-[8px] text-zinc-600 font-bold uppercase tracking-tighter group-hover:text-zinc-400">{task.tag}</span>
-                      <span className="text-[8px] font-mono text-zinc-600">{task.estimatedPomodoros} 🍅</span>
+                      <span className="text-[8px] font-mono text-zinc-600">{formatPomodoros(task.actualPomodoros || 0)} / {formatPomodoros(task.estimatedPomodoros || 0)} 🍅</span>
                     </div>
                     <h4 className="text-xs font-medium leading-tight truncate text-zinc-500 group-hover:text-zinc-300">{task.name}</h4>
                   </div>
@@ -257,65 +379,6 @@ export const Timer: React.FC = () => {
           )}
         </div>
       </div>
-
-      {/* Task Picker Modal */}
-      <AnimatePresence>
-        {showTaskPicker && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-6 bg-black/80 backdrop-blur-md"
-          >
-            <motion.div 
-              initial={{ y: "100%" }}
-              animate={{ y: 0 }}
-              exit={{ y: "100%" }}
-              className="w-full max-w-md bg-zinc-900 border-t sm:border border-zinc-800 rounded-t-[40px] sm:rounded-[40px] p-8 max-h-[80vh] overflow-hidden flex flex-col"
-            >
-              <div className="w-12 h-1.5 bg-zinc-800 rounded-full mx-auto mb-8 sm:hidden" />
-              <h3 className="text-2xl font-bold mb-6">Seleccionar Tareas</h3>
-              
-              <div className="flex-1 overflow-y-auto space-y-3 pr-2 custom-scrollbar">
-                {tasks.filter(t => t.status !== TaskStatus.COMPLETED).map(task => {
-                  const taskTag = tags.find(t => t.name === task.tag);
-                  const tagColor = taskTag?.color || '#10b981';
-                  const isActive = activeTaskIds.includes(task.id);
-                  
-                  return (
-                    <button
-                      key={task.id}
-                      onClick={() => toggleTaskSelection(task.id)}
-                      className={cn(
-                        "w-full text-left p-4 rounded-2xl border transition-all flex items-center gap-4",
-                        isActive 
-                          ? "bg-emerald-500/10 border-emerald-500 text-emerald-400" 
-                          : "bg-zinc-800/50 border-transparent text-zinc-400"
-                      )}
-                    >
-                      <div className="w-1.5 h-8 rounded-full" style={{ backgroundColor: tagColor, opacity: isActive ? 1 : 0.3 }} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex justify-between items-start mb-1">
-                          <span className="text-[10px] font-bold uppercase tracking-tighter opacity-70" style={{ color: isActive ? tagColor : undefined }}>{task.tag}</span>
-                          {isActive && <span className="text-[10px] font-bold uppercase">Activa</span>}
-                        </div>
-                        <p className="font-medium truncate">{task.name}</p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <button 
-                onClick={() => setShowTaskPicker(false)}
-                className="w-full p-5 mt-6 rounded-2xl bg-emerald-500 text-black font-bold"
-              >
-                Listo
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Idea Modal */}
       <AnimatePresence>

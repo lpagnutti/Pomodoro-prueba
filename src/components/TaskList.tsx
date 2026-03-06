@@ -18,6 +18,11 @@ const getRelativeTimeLabel = (timestamp: number, today: Date) => {
   return `hace ${days} días`;
 };
 
+const formatPomodoros = (num: number | undefined) => {
+  if (num === undefined || num === null) return '0';
+  return num % 1 === 0 ? num.toString() : num.toFixed(1);
+};
+
 export const TaskList: React.FC = () => {
   const { tasks, addTask, updateTask, deleteTask, completeTask, tags, addTag, updateTag, deleteTag, draftTask, setDraftTask } = useApp();
   const [showAddForm, setShowAddForm] = useState(false);
@@ -106,11 +111,17 @@ export const TaskList: React.FC = () => {
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
     if (newTaskName.trim()) {
+      let parsedDate: number | undefined;
+      if (newDueDate) {
+        const [year, month, day] = newDueDate.split('-').map(Number);
+        parsedDate = new Date(year, month - 1, day).getTime();
+      }
+      
       addTask({
         name: newTaskName,
         tag: newTag,
         estimatedPomodoros: newEstimate,
-        taskDate: newDueDate ? new Date(newDueDate).getTime() : undefined,
+        taskDate: parsedDate,
       });
       setNewTaskName('');
       setNewEstimate(1);
@@ -401,7 +412,7 @@ export const TaskList: React.FC = () => {
                     <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 group-hover:text-zinc-300 transition-colors">{tagName}</h4>
                     <div className="flex items-center gap-2 ml-auto">
                       <span className="text-[10px] text-zinc-700 font-mono">{tagTasks.length} tareas</span>
-                      <span className="text-[10px] text-zinc-700 font-mono">{tagTasks.reduce((sum, t) => sum + t.estimatedPomodoros, 0)} 🍅</span>
+                      <span className="text-[10px] text-zinc-700 font-mono">{formatPomodoros(tagTasks.reduce((sum, t) => sum + (t.actualPomodoros || 0), 0))} / {formatPomodoros(tagTasks.reduce((sum, t) => sum + (t.estimatedPomodoros || 0), 0))} 🍅</span>
                       {isExpanded ? <ChevronUp size={12} className="text-zinc-600" /> : <ChevronDown size={12} className="text-zinc-600" />}
                     </div>
                   </button>
@@ -444,7 +455,7 @@ export const TaskList: React.FC = () => {
                               </div>
                               <div className="flex items-center gap-2 mt-0.5">
                                 <span className="text-[8px] font-mono text-zinc-600">
-                                  {task.estimatedPomodoros} 🍅
+                                  {formatPomodoros(task.actualPomodoros || 0)} / {formatPomodoros(task.estimatedPomodoros || 0)} 🍅
                                 </span>
                                 {taskDateLabel && (
                                   <span className="text-[8px] flex items-center gap-1 text-zinc-500">
@@ -519,7 +530,7 @@ export const TaskList: React.FC = () => {
                         <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 group-hover:text-zinc-300 transition-colors">{tagName}</h4>
                         <div className="flex items-center gap-2 ml-auto">
                           <span className="text-[10px] text-zinc-700 font-mono">{tagTasks.length} tareas</span>
-                          <span className="text-[10px] text-zinc-700 font-mono">{tagTasks.reduce((sum, t) => sum + t.actualPomodoros, 0).toFixed(1)} 🍅</span>
+                          <span className="text-[10px] text-zinc-700 font-mono">{formatPomodoros(tagTasks.reduce((sum, t) => sum + (t.actualPomodoros || 0), 0))} 🍅</span>
                           {isExpanded ? <ChevronUp size={12} className="text-zinc-600" /> : <ChevronDown size={12} className="text-zinc-600" />}
                         </div>
                       </button>
@@ -552,7 +563,7 @@ export const TaskList: React.FC = () => {
                                       </div>
                                       <div className="flex items-center gap-2 mt-0.5">
                                         <span className="text-[8px] font-mono text-zinc-600">
-                                          {task.actualPomodoros.toFixed(1)} 🍅
+                                          {formatPomodoros(task.actualPomodoros || 0)} 🍅
                                         </span>
                                         {taskDateLabel && (
                                           <span className="text-[8px] flex items-center gap-1 text-zinc-500">
@@ -642,8 +653,15 @@ export const TaskList: React.FC = () => {
                         <CalendarIcon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
                         <input
                           type="date"
-                          value={taskToEdit.taskDate ? new Date(taskToEdit.taskDate).toISOString().split('T')[0] : ''}
-                          onChange={(e) => setTaskToEdit({ ...taskToEdit, taskDate: e.target.value ? new Date(e.target.value).getTime() : undefined })}
+                          value={taskToEdit.taskDate ? new Date(taskToEdit.taskDate).toLocaleDateString('en-CA') : ''}
+                          onChange={(e) => {
+                            let parsedDate: number | undefined;
+                            if (e.target.value) {
+                              const [year, month, day] = e.target.value.split('-').map(Number);
+                              parsedDate = new Date(year, month - 1, day).getTime();
+                            }
+                            setTaskToEdit({ ...taskToEdit, taskDate: parsedDate });
+                          }}
                           className="w-full bg-zinc-800 border-none rounded-2xl pl-12 pr-4 py-4 text-white focus:ring-2 focus:ring-emerald-500 [color-scheme:dark]"
                         />
                       </div>
@@ -653,17 +671,17 @@ export const TaskList: React.FC = () => {
                       <div className="flex items-center gap-4 bg-zinc-800 rounded-2xl p-2">
                         <button
                           type="button"
-                          onClick={() => setTaskToEdit({ ...taskToEdit, estimatedPomodoros: Math.max(0.5, taskToEdit.estimatedPomodoros - 0.5) })}
+                          onClick={() => setTaskToEdit({ ...taskToEdit, estimatedPomodoros: Math.max(0.5, (taskToEdit.estimatedPomodoros || 1) - 0.5) })}
                           className="p-3 rounded-xl bg-zinc-700 text-white hover:bg-zinc-600 transition-colors"
                         >
                           <Minus size={16} />
                         </button>
                         <div className="flex-1 text-center font-mono text-xl font-bold">
-                          {taskToEdit.estimatedPomodoros}
+                          {formatPomodoros(taskToEdit.estimatedPomodoros || 1)}
                         </div>
                         <button
                           type="button"
-                          onClick={() => setTaskToEdit({ ...taskToEdit, estimatedPomodoros: taskToEdit.estimatedPomodoros + 0.5 })}
+                          onClick={() => setTaskToEdit({ ...taskToEdit, estimatedPomodoros: (taskToEdit.estimatedPomodoros || 1) + 0.5 })}
                           className="p-3 rounded-xl bg-zinc-700 text-white hover:bg-zinc-600 transition-colors"
                         >
                           <Plus size={16} />
