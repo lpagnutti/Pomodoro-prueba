@@ -48,7 +48,21 @@ const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> 
 };
 
 function AppContent() {
-  const { currentScreen, setScreen } = useApp();
+  const { currentScreen, setScreen, userId, signIn } = useApp();
+
+  if (!userId) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-6 text-center">
+        <h1 className="text-4xl font-bold mb-8">Pomodoro Focus</h1>
+        <button 
+          onClick={signIn}
+          className="px-8 py-4 bg-emerald-500 text-black font-bold rounded-2xl hover:bg-emerald-400 transition-colors"
+        >
+          Iniciar sesión con Google
+        </button>
+      </div>
+    );
+  }
 
   const renderScreen = () => {
     switch (currentScreen) {

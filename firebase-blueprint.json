@@ -1,0 +1,81 @@
+{
+  "entities": {
+    "Task": {
+      "title": "Task",
+      "description": "A task to be completed",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "tag": { "type": "string" },
+        "tags": { "type": "array", "items": { "type": "string" } },
+        "estimatedPomodoros": { "type": "number" },
+        "actualPomodoros": { "type": "number" },
+        "status": { "type": "string", "enum": ["PENDING", "IN_PROGRESS", "COMPLETED"] },
+        "createdAt": { "type": "number" },
+        "completedAt": { "type": "number" },
+        "taskDate": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "name", "userId"]
+    },
+    "Idea": {
+      "title": "Idea",
+      "description": "An idea to be captured",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "text", "userId"]
+    },
+    "Session": {
+      "title": "Session",
+      "description": "A pomodoro session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "startTime": { "type": "number" },
+        "duration": { "type": "number" },
+        "energyLevel": { "type": "string", "enum": ["HIGH", "NORMAL", "LOW"] },
+        "type": { "type": "string", "enum": ["WORK", "BREAK"] },
+        "tasksWorkedOn": { "type": "array", "items": { "type": "string" } },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "startTime", "userId"]
+    },
+    "Tag": {
+      "title": "Tag",
+      "description": "A task tag",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "color": { "type": "string" },
+        "userId": { "type": "string" }
+      },
+      "required": ["id", "name", "userId"]
+    },
+    "UserStats": {
+      "title": "UserStats",
+      "description": "User statistics",
+      "type": "object",
+      "properties": {
+        "xp": { "type": "number" },
+        "level": { "type": "number" },
+        "totalPomodoros": { "type": "number" },
+        "userId": { "type": "string" }
+      },
+      "required": ["userId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/tasks/{taskId}": { "schema": "Task", "description": "User tasks" },
+    "/users/{userId}/ideas/{ideaId}": { "schema": "Idea", "description": "User ideas" },
+    "/users/{userId}/sessions/{sessionId}": { "schema": "Session", "description": "User sessions" },
+    "/users/{userId}/tags/{tagId}": { "schema": "Tag", "description": "User tags" },
+    "/users/{userId}/stats/{statsId}": { "schema": "UserStats", "description": "User statistics" }
+  }
+}

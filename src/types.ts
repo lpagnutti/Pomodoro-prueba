@@ -49,6 +49,7 @@ export interface Session {
   energyLevel: EnergyLevel;
   type: 'WORK' | 'BREAK';
   tasksWorkedOn: string[]; // IDs of tasks worked on during this session
+  userId: string;
 }
 
 export interface UserStats {

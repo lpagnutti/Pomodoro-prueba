@@ -3,7 +3,19 @@ import { motion } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie } from 'recharts';
 import { useApp } from '../AppContext';
 import { TrendingUp, Target, Award, Zap, Calendar, Filter, ChevronDown, PieChart as PieChartIcon } from 'lucide-react';
-import { TaskStatus, cn } from '../types';
+import { TaskStatus, cn, EnergyLevel } from '../types';
+
+const ENERGY_COLORS = {
+  [EnergyLevel.HIGH]: '#ef4444',
+  [EnergyLevel.NORMAL]: '#f59e0b',
+  [EnergyLevel.LOW]: '#3b82f6',
+};
+
+const ENERGY_LABELS = {
+  [EnergyLevel.HIGH]: 'Alta',
+  [EnergyLevel.NORMAL]: 'Normal',
+  [EnergyLevel.LOW]: 'Baja',
+};
 
 type Timeframe = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR';
 
@@ -170,13 +182,34 @@ export const Statistics: React.FC = () => {
     }).sort((a, b) => b.value - a.value); // Sort by value descending
   }, [periodTasks, tags]);
 
+  // Calculate energy distribution
+  const energyData = React.useMemo(() => {
+    const filteredSessions = sessions.filter(s => s.type === 'WORK');
+    const counts = {
+      [EnergyLevel.HIGH]: 0,
+      [EnergyLevel.NORMAL]: 0,
+      [EnergyLevel.LOW]: 0,
+    };
+    filteredSessions.forEach(s => {
+      if (s.energyLevel in counts) {
+        counts[s.energyLevel]++;
+      }
+    });
+
+    return [
+      { name: ENERGY_LABELS[EnergyLevel.HIGH], value: counts[EnergyLevel.HIGH], color: ENERGY_COLORS[EnergyLevel.HIGH] },
+      { name: ENERGY_LABELS[EnergyLevel.NORMAL], value: counts[EnergyLevel.NORMAL], color: ENERGY_COLORS[EnergyLevel.NORMAL] },
+      { name: ENERGY_LABELS[EnergyLevel.LOW], value: counts[EnergyLevel.LOW], color: ENERGY_COLORS[EnergyLevel.LOW] },
+    ].filter(d => d.value > 0);
+  }, [sessions]);
+
   const CustomPieTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
         <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl shadow-xl">
           <p className="text-sm font-bold" style={{ color: data.color }}>{data.name}</p>
-          <p className="text-xs text-zinc-400 mt-1">{data.value} tareas ({data.percentage}%)</p>
+          <p className="text-xs text-zinc-400 mt-1">{data.value} sesiones</p>
         </div>
       );
     }
@@ -324,57 +357,90 @@ export const Statistics: React.FC = () => {
         </div>
       </div>
 
-      {/* Pie Chart Section */}
-      {pieChartData.length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-6 space-y-6">
-          <div className="flex items-center gap-2">
-            <PieChartIcon size={18} className="text-emerald-500" />
-            <h3 className="text-sm font-bold uppercase tracking-widest">Distribución por Etiqueta</h3>
-          </div>
+      {/* Energy Distribution Chart */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-6 space-y-6">
+        <div className="flex items-center gap-2">
+          <Zap size={18} className="text-amber-500" />
+          <h3 className="text-sm font-bold uppercase tracking-widest">Distribución de Energía</h3>
+        </div>
+        
+        <div className="h-64 w-full relative">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={energyData}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={80}
+                paddingAngle={5}
+                dataKey="value"
+                stroke="none"
+              >
+                {energyData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomPieTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
           
-          <div className="h-64 w-full relative">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieChartData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                  stroke="none"
-                >
-                  {pieChartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomPieTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-            
-            {/* Center Text */}
-            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-              <span className="text-3xl font-bold">{periodTasks.length}</span>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Tareas</span>
-            </div>
-          </div>
-
-          {/* Custom Legend */}
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            {pieChartData.map((entry, index) => (
-              <div key={index} className="flex items-center justify-between p-2 bg-zinc-800/50 rounded-xl">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                  <span className="text-xs font-medium truncate max-w-[80px]">{entry.name}</span>
-                </div>
-                <span className="text-xs font-bold text-zinc-400">{entry.percentage}%</span>
-              </div>
-            ))}
+          {/* Center Text */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-3xl font-bold">{sessions.filter(s => s.type === 'WORK').length}</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Sesiones</span>
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Tag Distribution */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-6 space-y-6">
+        <div className="flex items-center gap-2">
+          <PieChartIcon size={18} className="text-violet-500" />
+          <h3 className="text-sm font-bold uppercase tracking-widest">Distribución por Etiqueta</h3>
+        </div>
+        
+        <div className="h-64 w-full relative">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={pieChartData}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={80}
+                paddingAngle={5}
+                dataKey="value"
+                stroke="none"
+              >
+                {pieChartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Pie>
+              <Tooltip content={<CustomPieTooltip />} />
+            </PieChart>
+          </ResponsiveContainer>
+          
+          {/* Center Text */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-3xl font-bold">{periodTasks.length}</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Tareas</span>
+          </div>
+        </div>
+
+        {/* Custom Legend */}
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          {pieChartData.map((entry, index) => (
+            <div key={index} className="flex items-center justify-between p-2 bg-zinc-800/50 rounded-xl">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-xs font-medium truncate max-w-[80px]">{entry.name}</span>
+              </div>
+              <span className="text-xs font-bold text-zinc-400">{entry.percentage}%</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 };
-

@@ -1,0 +1,123 @@
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: users/{userId}/tasks
+// Document ID: taskId
+// Fields:
+//   - id: string (required)
+//   - name: string (required, < 100 chars)
+//   - tag: string (required, < 50 chars)
+//   - tags: list (required, < 20 items, each string < 50 chars)
+//   - estimatedPomodoros: number (required, > 0)
+//   - actualPomodoros: number (required, >= 0)
+//   - status: string (required, enum: PENDING, IN_PROGRESS, COMPLETED)
+//   - createdAt: timestamp (required)
+//   - completedAt: timestamp (optional)
+//   - taskDate: timestamp (optional)
+//   - userId: string (required)
+//
+// Collection: users/{userId}/ideas
+// Document ID: ideaId
+// Fields:
+//   - id: string (required)
+//   - text: string (required, < 1000 chars)
+//   - createdAt: timestamp (required)
+//   - userId: string (required)
+//
+// Collection: users/{userId}/sessions
+// Document ID: sessionId
+// Fields:
+//   - id: string (required)
+//   - startTime: timestamp (required)
+//   - duration: number (required, > 0)
+//   - energyLevel: string (required, enum: HIGH, NORMAL, LOW)
+//   - type: string (required, enum: WORK, BREAK)
+//   - tasksWorkedOn: list (required, < 50 items, each string)
+//   - userId: string (required)
+//
+// Collection: users/{userId}/tags
+// Document ID: tagId
+// Fields:
+//   - id: string (required)
+//   - name: string (required, < 50 chars)
+//   - color: string (required, < 20 chars)
+//   - userId: string (required)
+//
+// Collection: users/{userId}/stats
+// Document ID: statsId
+// Fields:
+//   - xp: number (required, >= 0)
+//   - level: number (required, >= 1)
+//   - totalPomodoros: number (required, >= 0)
+//   - userId: string (required)
+//
+// ===============================================================
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+       return request.auth != null;
+    }
+
+    function isOwner(userId) {
+       return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function hasRequiredFields(fields) {
+       return request.resource.data.keys().hasAll(fields);
+    }
+
+    function validStringLength(field, minLen, maxLen) {
+       return request.resource.data[field] is string &&
+         request.resource.data[field].size() >= minLen &&
+         request.resource.data[field].size() <= maxLen;
+    }
+
+    function isValidStatus(status) {
+      return status in ['PENDING', 'IN_PROGRESS', 'COMPLETED'];
+    }
+
+    function isValidEnergyLevel(level) {
+      return level in ['HIGH', 'NORMAL', 'LOW'];
+    }
+
+    function isValidSessionType(type) {
+      return type in ['WORK', 'BREAK'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      match /tasks/{taskId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /ideas/{ideaId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /sessions/{sessionId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /tags/{tagId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      match /stats/{statsId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+  }
+}

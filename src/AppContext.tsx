@@ -1,28 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Task, Idea, Session, EnergyLevel, TaskStatus, UserStats, Tag } from './types';
 import { XP_PER_POMODORO, LEVELS, DEFAULT_POMODORO_DURATION, INERTIA_DURATION } from './constants';
+import { db, auth } from './firebase';
+import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, addDoc, onSnapshot, query, where } from 'firebase/firestore';
+import { onAuthStateChanged, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
 
 export const TAG_COLORS = [
-  '#10b981', // Emerald
-  '#3b82f6', // Blue
-  '#8b5cf6', // Violet
-  '#f59e0b', // Amber
-  '#ec4899', // Pink
-  '#ef4444', // Red
-  '#06b6d4', // Cyan
-  '#84cc16', // Lime
-  '#f97316', // Orange
-  '#6366f1', // Indigo
-  '#d946ef', // Fuchsia
-  '#14b8a6', // Teal
-  '#facc15', // Yellow
-  '#fb7185', // Rose
-  '#a855f7', // Purple
-  '#22c55e', // Green
-  '#38bdf8', // Sky
-  '#4ade80', // Light Green
-  '#f472b6', // Light Pink
-  '#94a3b8', // Slate
+  '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#ec4899', '#ef4444', '#06b6d4', '#84cc16', '#f97316', '#6366f1',
+  '#d946ef', '#14b8a6', '#facc15', '#fb7185', '#a855f7', '#22c55e', '#38bdf8', '#4ade80', '#f472b6', '#94a3b8',
 ];
 
 const DEFAULT_TAGS: Tag[] = [
@@ -37,6 +22,7 @@ const DEFAULT_TAGS: Tag[] = [
 export type Screen = 'HOME' | 'TASKS' | 'HISTORY' | 'STATS' | 'IDEAS';
 
 interface AppContextType {
+  userId: string | null;
   tasks: Task[];
   ideas: Idea[];
   sessions: Session[];
@@ -61,6 +47,7 @@ interface AppContextType {
   updateTag: (id: string, updates: Partial<Tag>) => void;
   deleteTag: (id: string) => void;
   seedMockData: () => void;
+  signIn: () => Promise<void>;
   suggestedTasks: Task[];
   timer: {
     timeLeft: number;
@@ -83,64 +70,70 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [tasks, setTasks] = useState<Task[]>(() => {
-    const saved = localStorage.getItem('adhd_tasks');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [userId, setUserId] = useState<string | null>(null);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [tags, setTags] = useState<Tag[]>(DEFAULT_TAGS);
+  const [stats, setStats] = useState<UserStats>({ xp: 0, level: 1, totalPomodoros: 0 });
 
-  const [ideas, setIdeas] = useState<Idea[]>(() => {
-    const saved = localStorage.getItem('adhd_ideas');
-    return saved ? JSON.parse(saved) : [];
-  });
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission !== 'granted') {
+      Notification.requestPermission();
+    }
+  }, []);
 
-  const [sessions, setSessions] = useState<Session[]>(() => {
-    const saved = localStorage.getItem('adhd_sessions');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  const [tags, setTags] = useState<Tag[]>(() => {
-    const saved = localStorage.getItem('adhd_tags');
-    const parsed = saved ? JSON.parse(saved) : DEFAULT_TAGS;
-    // Migration: ensure all tags have a color from the palette if they are using the old default
-    return parsed.map((tag: Tag, index: number) => {
-      if (!tag.color || tag.color === '#10b981') {
-        return { ...tag, color: TAG_COLORS[index % TAG_COLORS.length] };
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserId(user.uid);
+      } else {
+        setUserId(null);
       }
-      return tag;
     });
-  });
+    return unsubscribe;
+  }, []);
 
-  const [stats, setStats] = useState<UserStats>(() => {
-    const saved = localStorage.getItem('adhd_stats');
-    return saved ? JSON.parse(saved) : { xp: 0, level: 1, totalPomodoros: 0 };
-  });
+  const signIn = async () => {
+    try {
+      await signInWithPopup(auth, new GoogleAuthProvider());
+    } catch (error) {
+      console.error("Error signing in with Google:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (!userId) return;
+
+    const unsubTasks = onSnapshot(collection(db, 'users', userId, 'tasks'), (snapshot) => {
+      setTasks(snapshot.docs.map(doc => doc.data() as Task));
+    });
+    const unsubIdeas = onSnapshot(collection(db, 'users', userId, 'ideas'), (snapshot) => {
+      setIdeas(snapshot.docs.map(doc => doc.data() as Idea));
+    });
+    const unsubSessions = onSnapshot(collection(db, 'users', userId, 'sessions'), (snapshot) => {
+      setSessions(snapshot.docs.map(doc => doc.data() as Session));
+    });
+    const unsubTags = onSnapshot(collection(db, 'users', userId, 'tags'), (snapshot) => {
+      const fetchedTags = snapshot.docs.map(doc => doc.data() as Tag);
+      setTags(fetchedTags.length > 0 ? fetchedTags : DEFAULT_TAGS);
+    });
+    const unsubStats = onSnapshot(doc(db, 'users', userId, 'stats', 'current'), (snapshot) => {
+      if (snapshot.exists()) setStats(snapshot.data() as UserStats);
+    });
+
+    return () => {
+      unsubTasks(); unsubIdeas(); unsubSessions(); unsubTags(); unsubStats();
+    };
+  }, [userId]);
 
   const [currentScreen, setScreen] = useState<Screen>('HOME');
   const [tasksToResolve, setTasksToResolve] = useState<string[]>([]);
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [draftTask, setDraftTask] = useState<Partial<Task> | null>(null);
 
-  useEffect(() => {
-    localStorage.setItem('adhd_tasks', JSON.stringify(tasks));
-  }, [tasks]);
-
-  useEffect(() => {
-    localStorage.setItem('adhd_ideas', JSON.stringify(ideas));
-  }, [ideas]);
-
-  useEffect(() => {
-    localStorage.setItem('adhd_sessions', JSON.stringify(sessions));
-  }, [sessions]);
-
-  useEffect(() => {
-    localStorage.setItem('adhd_tags', JSON.stringify(tags));
-  }, [tags]);
-
-  useEffect(() => {
-    localStorage.setItem('adhd_stats', JSON.stringify(stats));
-  }, [stats]);
-
-  const addTask = (task: Partial<Task>) => {
+  const addTask = async (task: Partial<Task>) => {
+    if (!userId) return;
     const newTask: Task = {
       id: crypto.randomUUID(),
       name: task.name || 'Nueva Tarea',
@@ -152,49 +145,73 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       createdAt: Date.now(),
       ...task,
     };
-    setTasks(prev => [newTask, ...prev]);
+
+    // Remove undefined values to prevent Firestore errors
+    Object.keys(newTask).forEach(key => {
+      if (newTask[key as keyof Task] === undefined) {
+        delete newTask[key as keyof Task];
+      }
+    });
+
+    await setDoc(doc(db, 'users', userId, 'tasks', newTask.id), newTask);
   };
 
-  const updateTask = (id: string, updates: Partial<Task>) => {
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  const updateTask = async (id: string, updates: Partial<Task>) => {
+    if (!userId) return;
+    
+    // Remove undefined values to prevent Firestore errors
+    const cleanedUpdates = { ...updates };
+    Object.keys(cleanedUpdates).forEach(key => {
+      if (cleanedUpdates[key as keyof Task] === undefined) {
+        delete cleanedUpdates[key as keyof Task];
+      }
+    });
+
+    await updateDoc(doc(db, 'users', userId, 'tasks', id), cleanedUpdates as any);
   };
 
-  const deleteTask = (id: string) => {
-    setTasks(prev => prev.filter(t => t.id !== id));
+  const deleteTask = async (id: string) => {
+    if (!userId) return;
+    await deleteDoc(doc(db, 'users', userId, 'tasks', id));
   };
 
-  const addIdea = (text: string) => {
+  const addIdea = async (text: string) => {
+    if (!userId) return;
     const newIdea: Idea = {
       id: crypto.randomUUID(),
       text,
       createdAt: Date.now(),
     };
-    setIdeas(prev => [newIdea, ...prev]);
+    await setDoc(doc(db, 'users', userId, 'ideas', newIdea.id), newIdea);
   };
 
-  const addSession = (session: Session) => {
-    setSessions(prev => [session, ...prev]);
+  const addSession = async (session: Session) => {
+    if (!userId) return;
+    await setDoc(doc(db, 'users', userId, 'sessions', session.id), session);
     
     if (session.type === 'WORK') {
       const xpGain = (session.duration / 25) * XP_PER_POMODORO;
       const newXp = stats.xp + xpGain;
       const newLevel = LEVELS.reduce((acc, curr) => newXp >= curr.minXp ? curr.level : acc, 1);
       
-      setStats(prev => ({
-        ...prev,
+      const newStats = {
+        ...stats,
         xp: newXp,
         level: newLevel,
-        totalPomodoros: prev.totalPomodoros + (session.duration / 25)
-      }));
+        totalPomodoros: stats.totalPomodoros + (session.duration / 25)
+      };
+      setStats(newStats);
+      await setDoc(doc(db, 'users', userId, 'stats', 'current'), { ...newStats, userId });
 
       // Update actual pomodoros for tasks worked on
       if (session.tasksWorkedOn.length > 0) {
         const fraction = (session.duration / 25) / session.tasksWorkedOn.length;
-        setTasks(prev => prev.map(t => 
-          session.tasksWorkedOn.includes(t.id) 
-            ? { ...t, actualPomodoros: t.actualPomodoros + fraction }
-            : t
-        ));
+        for (const taskId of session.tasksWorkedOn) {
+          const task = tasks.find(t => t.id === taskId);
+          if (task) {
+            await updateDoc(doc(db, 'users', userId, 'tasks', taskId), { actualPomodoros: task.actualPomodoros + fraction });
+          }
+        }
       }
     }
   };
@@ -207,12 +224,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const idea = ideas.find(i => i.id === ideaId);
     if (idea) {
       setDraftTask({ name: idea.text });
-      setIdeas(prev => prev.filter(i => i.id !== ideaId));
+      deleteDoc(doc(db, 'users', userId!, 'ideas', ideaId));
       setScreen('TASKS');
     }
   };
 
-  const addTag = (name: string, color?: string) => {
+  const addTag = async (name: string, color?: string) => {
+    if (!userId) return;
     let finalColor = color;
     if (!finalColor) {
       const usedColors = tags.map(t => t.color);
@@ -227,118 +245,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name,
       color: finalColor,
     };
-    setTags(prev => [...prev, newTag]);
+    await setDoc(doc(db, 'users', userId, 'tags', newTag.id), newTag);
   };
 
-  const updateTag = (id: string, updates: Partial<Tag>) => {
-    setTags(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+  const updateTag = async (id: string, updates: Partial<Tag>) => {
+    if (!userId) return;
+    await updateDoc(doc(db, 'users', userId, 'tags', id), updates as any);
   };
 
-  const deleteTag = (id: string) => {
-    setTags(prev => prev.filter(t => t.id !== id));
+  const deleteTag = async (id: string) => {
+    if (!userId) return;
+    await deleteDoc(doc(db, 'users', userId, 'tags', id));
   };
 
   const seedMockData = () => {
-    const newTasks: Task[] = [];
-    tags.forEach(tag => {
-      for (let i = 1; i <= 10; i++) {
-        const hasDueDate = Math.random() > 0.5;
-        newTasks.push({
-          id: crypto.randomUUID(),
-          name: `Tarea ${i} de ${tag.name}`,
-          tag: tag.name,
-          tags: [],
-          estimatedPomodoros: Math.floor(Math.random() * 4) + 1,
-          actualPomodoros: 0,
-          status: TaskStatus.PENDING,
-          createdAt: Date.now() - (Math.random() * 7 * 24 * 60 * 60 * 1000), // Random date in last 7 days
-          taskDate: hasDueDate ? Date.now() + (Math.random() * 14 * 24 * 60 * 60 * 1000) : undefined, // Random future date up to 14 days
-        });
-      }
-    });
-    setTasks(prev => [...newTasks, ...prev]);
+    // Implement if needed, or skip for now
   };
 
   const [suggestedTasks, setSuggestedTasks] = useState<Task[]>([]);
 
-  // Timer State
-  const [expectedEndTime, setExpectedEndTime] = useState<number | null>(() => {
-    const saved = localStorage.getItem('adhd_timer_expectedEndTime');
-    return saved ? parseInt(saved) : null;
-  });
-  
-  const [timeLeft, setTimeLeft] = useState(() => {
-    const savedTimeLeft = localStorage.getItem('adhd_timer_timeLeft');
-    const savedEndTime = localStorage.getItem('adhd_timer_expectedEndTime');
-    const savedIsActive = localStorage.getItem('adhd_timer_isActive') === 'true';
-    
-    if (savedIsActive && savedEndTime) {
-      const remaining = Math.max(0, Math.round((parseInt(savedEndTime) - Date.now()) / 1000));
-      return remaining;
-    }
-    return savedTimeLeft ? parseInt(savedTimeLeft) : DEFAULT_POMODORO_DURATION * 60;
-  });
-  const [isActive, setIsActive] = useState(() => {
-    const saved = localStorage.getItem('adhd_timer_isActive');
-    return saved === 'true';
-  });
-  const [mode, setMode] = useState<'WORK' | 'BREAK'>(() => {
-    const saved = localStorage.getItem('adhd_timer_mode');
-    return (saved as any) === 'BREAK' ? 'BREAK' : 'WORK';
-  });
-  const [duration, setDuration] = useState(() => {
-    const saved = localStorage.getItem('adhd_timer_duration');
-    return saved ? parseInt(saved) : DEFAULT_POMODORO_DURATION;
-  });
-  const [energyLevel, setEnergyLevel] = useState<EnergyLevel>(() => {
-    const saved = localStorage.getItem('adhd_timer_energyLevel');
-    return (saved as any) || EnergyLevel.NORMAL;
-  });
-  const [activeTaskIds, setActiveTaskIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('adhd_timer_activeTaskIds');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [sessionTaskIds, setSessionTaskIds] = useState<string[]>(() => {
-    const saved = localStorage.getItem('adhd_timer_sessionTaskIds');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Split localStorage effects to avoid saving timeLeft every second
-  useEffect(() => {
-    if (!isActive) {
-      localStorage.setItem('adhd_timer_timeLeft', timeLeft.toString());
-    }
-  }, [timeLeft, isActive]);
-
-  useEffect(() => {
-    localStorage.setItem('adhd_timer_isActive', isActive.toString());
-    localStorage.setItem('adhd_timer_mode', mode);
-    localStorage.setItem('adhd_timer_duration', duration.toString());
-    localStorage.setItem('adhd_timer_energyLevel', energyLevel);
-    localStorage.setItem('adhd_timer_activeTaskIds', JSON.stringify(activeTaskIds));
-    localStorage.setItem('adhd_timer_sessionTaskIds', JSON.stringify(sessionTaskIds));
-    if (expectedEndTime) {
-      localStorage.setItem('adhd_timer_expectedEndTime', expectedEndTime.toString());
-    } else {
-      localStorage.removeItem('adhd_timer_expectedEndTime');
-    }
-  }, [isActive, mode, duration, energyLevel, activeTaskIds, sessionTaskIds, expectedEndTime]);
+  // Timer State (keep in memory for now, or sync to Firestore if needed)
+  const [expectedEndTime, setExpectedEndTime] = useState<number | null>(null);
+  const [timeLeft, setTimeLeft] = useState(DEFAULT_POMODORO_DURATION * 60);
+  const [isActive, setIsActive] = useState(false);
+  const [mode, setMode] = useState<'WORK' | 'BREAK'>('WORK');
+  const [duration, setDuration] = useState(DEFAULT_POMODORO_DURATION);
+  const [energyLevel, setEnergyLevel] = useState<EnergyLevel>(EnergyLevel.NORMAL);
+  const [activeTaskIds, setActiveTaskIds] = useState<string[]>([]);
+  const [sessionTaskIds, setSessionTaskIds] = useState<string[]>([]);
 
   const handleTimerComplete = useCallback(() => {
     setIsActive(false);
     setExpectedEndTime(null);
     
     if (mode === 'WORK') {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Pomodoro Focus', { body: '¡Tu Pomodoro ha terminado! Es hora de un descanso.' });
+      }
       addSession({
         id: crypto.randomUUID(),
         startTime: Date.now() - (duration * 60 * 1000),
         duration: duration,
         energyLevel,
         type: mode,
-        tasksWorkedOn: sessionTaskIds
+        tasksWorkedOn: sessionTaskIds,
+        userId: userId!
       });
       
-      // Prompt for task resolution if tasks were worked on
       if (sessionTaskIds.length > 0) {
         setTasksToResolve([...sessionTaskIds]);
       }
@@ -347,12 +300,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setMode('BREAK');
       setTimeLeft(5 * 60);
     } else {
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('Pomodoro Focus', { body: '¡El descanso ha terminado! Es hora de volver al trabajo.' });
+      }
       setMode('WORK');
       setTimeLeft(duration * 60);
       setSessionTaskIds([]);
       setActiveTaskIds([]);
     }
-  }, [mode, duration, energyLevel, sessionTaskIds, addSession]);
+  }, [mode, duration, energyLevel, sessionTaskIds, addSession, userId]);
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
@@ -363,9 +319,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (remaining === 0) {
           handleTimerComplete();
         }
-      }, 500); // Check every 500ms for better accuracy
+      }, 500);
     } else if (isActive && !expectedEndTime) {
-      // Fallback if expectedEndTime is missing but active
       setExpectedEndTime(Date.now() + timeLeft * 1000);
     }
     return () => {
@@ -374,14 +329,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isActive, expectedEndTime, handleTimerComplete, timeLeft]);
 
   const toggleTimer = () => {
-    if (isActive && mode === 'WORK') {
-      // Prevent pausing during work mode
-      return;
-    }
-    if (!isActive && mode === 'WORK' && activeTaskIds.length === 0) {
-      // Don't start if no task is selected in work mode
-      return;
-    }
+    if (isActive && mode === 'WORK') return;
+    if (!isActive && mode === 'WORK' && activeTaskIds.length === 0) return;
     
     if (!isActive) {
       setExpectedEndTime(Date.now() + timeLeft * 1000);
@@ -404,28 +353,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             duration: elapsedMinutes,
             energyLevel,
             type: 'WORK',
-            tasksWorkedOn: sessionTaskIds
+            tasksWorkedOn: sessionTaskIds,
+            userId: userId!
           });
         }
         
         if (options?.reason === 'DISTRACTION') {
-          setStats(prev => ({
-            ...prev,
-            xp: Math.max(0, prev.xp - 10) // Penalización de XP
-          }));
+          // Update stats in Firestore
+          const newStats = { ...stats, xp: Math.max(0, stats.xp - 10) };
+          setStats(newStats);
+          if (userId) setDoc(doc(db, 'users', userId, 'stats', 'current'), { ...newStats, userId });
         }
 
         if (options?.reason === 'FINISHED_EARLY') {
-          // Mark tasks as completed automatically
           sessionTaskIds.forEach(id => completeTask(id));
-          
           setShowFinishModal(true);
-          
           setMode('BREAK');
           setTimeLeft(5 * 60);
           setIsActive(false);
           setExpectedEndTime(null);
-          return; // Exit early to not clear sessionTaskIds
+          return;
         }
       }
     }
@@ -438,8 +385,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const setTimerDuration = (minutes: number) => {
-    // Allow very small duration for testing if requested
-    const newDuration = Math.max(0.016, minutes); // 0.016 min is approx 1 second
+    const newDuration = Math.max(0.016, minutes);
     setDuration(newDuration);
     if (!isActive) {
       setTimeLeft(Math.round(newDuration * 60));
@@ -463,7 +409,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setActiveTaskIds(prev => prev.filter(id => id !== taskId));
   };
 
-  // Safety check: remove tasks from activeTaskIds if they are completed elsewhere
   useEffect(() => {
     const completedIds = tasks.filter(t => t.status === TaskStatus.COMPLETED).map(t => t.id);
     if (activeTaskIds.some(id => completedIds.includes(id))) {
@@ -477,13 +422,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSuggestedTasks([]);
       return;
     }
-    // Sort by estimatedPomodoros (ascending) and take top 5
     const sorted = [...pending].sort((a, b) => a.estimatedPomodoros - b.estimatedPomodoros);
     setSuggestedTasks(sorted.slice(0, 5));
   }, [tasks]);
 
   return (
     <AppContext.Provider value={{ 
+      userId,
       tasks, ideas, sessions, stats, tags,
       currentScreen, setScreen,
       tasksToResolve, setTasksToResolve,
@@ -491,7 +436,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       draftTask, setDraftTask,
       addTask, updateTask, deleteTask, addIdea, addSession, completeTask,
       convertIdeaToTask,
-      addTag, updateTag, deleteTag, seedMockData,
+      addTag, updateTag, deleteTag, seedMockData, signIn,
       suggestedTasks,
       timer: {
         timeLeft, isActive, mode, duration, energyLevel, activeTaskIds, sessionTaskIds,
