@@ -1,0 +1,289 @@
+import React, { useState } from 'react';
+import { motion } from 'framer-motion';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
+import { useApp } from '../AppContext';
+import { TrendingUp, Target, Award, Zap, Calendar, Filter, ChevronDown } from 'lucide-react';
+import { TaskStatus, cn } from '../types';
+
+type Timeframe = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR';
+
+export const Statistics: React.FC = () => {
+  const { sessions, tasks, stats, tags } = useApp();
+  const [timeframe, setTimeframe] = useState<Timeframe>('DAY');
+  const [selectedTag, setSelectedTag] = useState<string>('ALL');
+
+  // Helper to get date string
+  const getDateStr = (date: Date) => date.toISOString().split('T')[0];
+
+  // Get range of dates based on timeframe
+  const getDates = () => {
+    const dates: string[] = [];
+    const now = new Date();
+    
+    if (timeframe === 'DAY') {
+      // For day, we show hours
+      for (let i = 23; i >= 0; i--) {
+        const d = new Date();
+        d.setHours(now.getHours() - i, 0, 0, 0);
+        dates.push(d.toISOString()); // Use ISO string for unique keys
+      }
+    } else if (timeframe === 'WEEK') {
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(now.getDate() - i);
+        dates.push(getDateStr(d));
+      }
+    } else if (timeframe === 'MONTH') {
+      for (let i = 29; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(now.getDate() - i);
+        dates.push(getDateStr(d));
+      }
+    } else {
+      // For year, we group by month
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date();
+        d.setMonth(now.getMonth() - i);
+        dates.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+      }
+    }
+    return dates;
+  };
+
+  const dates = getDates();
+
+  const activityData = dates.map(dateKey => {
+    let periodTasks = tasks.filter(t => t.status === TaskStatus.COMPLETED && t.completedAt);
+    let periodSessions = sessions.filter(s => s.type === 'WORK');
+
+    if (selectedTag !== 'ALL') {
+      periodTasks = periodTasks.filter(t => t.tag === selectedTag);
+      periodSessions = periodSessions.filter(s => 
+        s.tasksWorkedOn.some(tid => tasks.find(t => t.id === tid)?.tag === selectedTag)
+      );
+    }
+
+    let taskCount = 0;
+    let pomodoroCount = 0;
+
+    if (timeframe === 'DAY') {
+      const dKey = new Date(dateKey);
+      const hour = dKey.getHours();
+      const dateStr = getDateStr(dKey);
+      
+      taskCount = periodTasks.filter(t => {
+        const d = new Date(t.completedAt!);
+        return getDateStr(d) === dateStr && d.getHours() === hour;
+      }).length;
+
+      pomodoroCount = periodSessions.filter(s => {
+        const d = new Date(s.startTime);
+        return getDateStr(d) === dateStr && d.getHours() === hour;
+      }).reduce((sum, s) => sum + (s.duration / 25), 0);
+    } else if (timeframe === 'YEAR') {
+      // dateKey is YYYY-MM
+      taskCount = periodTasks.filter(t => {
+        const d = new Date(t.completedAt!);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === dateKey;
+      }).length;
+
+      pomodoroCount = periodSessions.filter(s => {
+        const d = new Date(s.startTime);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` === dateKey;
+      }).reduce((sum, s) => sum + (s.duration / 25), 0);
+    } else {
+      // dateKey is YYYY-MM-DD
+      taskCount = periodTasks.filter(t => getDateStr(new Date(t.completedAt!)) === dateKey).length;
+      pomodoroCount = periodSessions.filter(s => getDateStr(new Date(s.startTime)) === dateKey).reduce((sum, s) => sum + (s.duration / 25), 0);
+    }
+
+    let label = '';
+    if (timeframe === 'DAY') {
+      label = `${new Date(dateKey).getHours()}h`;
+    } else if (timeframe === 'WEEK') {
+      label = new Date(dateKey).toLocaleDateString('es-LA', { weekday: 'short' });
+    } else if (timeframe === 'MONTH') {
+      label = new Date(dateKey).getDate().toString();
+    } else {
+      const [year, month] = dateKey.split('-');
+      label = new Date(parseInt(year), parseInt(month) - 1).toLocaleDateString('es-LA', { month: 'short' });
+    }
+
+    return {
+      name: label,
+      tareas: taskCount,
+      pomodoros: parseFloat(pomodoroCount.toFixed(1))
+    };
+  });
+
+  // Calculate accuracy and pomodoros based on timeframe and tag
+  const getFilteredStats = () => {
+    const now = new Date();
+    let filteredTasks = tasks.filter(t => t.status === TaskStatus.COMPLETED && t.completedAt);
+    let filteredSessions = sessions.filter(s => s.type === 'WORK');
+
+    if (selectedTag !== 'ALL') {
+      filteredTasks = filteredTasks.filter(t => t.tag === selectedTag);
+      filteredSessions = filteredSessions.filter(s => 
+        s.tasksWorkedOn.some(tid => tasks.find(t => t.id === tid)?.tag === selectedTag)
+      );
+    }
+
+    const startTime = new Date();
+    if (timeframe === 'DAY') startTime.setHours(0, 0, 0, 0);
+    else if (timeframe === 'WEEK') startTime.setDate(now.getDate() - 7);
+    else if (timeframe === 'MONTH') startTime.setDate(now.getDate() - 30);
+    else if (timeframe === 'YEAR') startTime.setFullYear(now.getFullYear() - 1);
+
+    const periodTasks = filteredTasks.filter(t => t.completedAt! >= startTime.getTime());
+    const periodSessions = filteredSessions.filter(s => s.startTime >= startTime.getTime());
+
+    const totalEstimated = periodTasks.reduce((sum, t) => sum + t.estimatedPomodoros, 0);
+    const totalActual = periodTasks.reduce((sum, t) => sum + t.actualPomodoros, 0);
+    const accuracy = totalEstimated > 0 ? Math.round((Math.min(totalEstimated, totalActual) / Math.max(totalEstimated, totalActual)) * 100) : 0;
+    const pomodoroCount = periodSessions.reduce((sum, s) => sum + (s.duration / 25), 0);
+
+    return { accuracy, pomodoroCount };
+  };
+
+  const { accuracy, pomodoroCount } = getFilteredStats();
+
+  return (
+    <div className="flex flex-col w-full max-w-md mx-auto p-6 pb-24 space-y-8">
+      <h2 className="text-3xl font-bold tracking-tight">Estadísticas</h2>
+
+      {/* Level Card */}
+      <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-[40px] p-8 text-black shadow-xl shadow-emerald-500/20">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">Nivel Actual</p>
+            <h3 className="text-3xl font-black">NIVEL {stats.level}</h3>
+          </div>
+          <Award size={48} className="opacity-30" />
+        </div>
+        <div className="space-y-2">
+          <div className="flex justify-between text-xs font-bold">
+            <span>PROGRESO XP</span>
+            <span>{Math.round(stats.xp)} XP</span>
+          </div>
+          <div className="h-3 bg-black/20 rounded-full overflow-hidden">
+            <motion.div 
+              initial={{ width: 0 }}
+              animate={{ width: `${(stats.xp % 100)}%` }}
+              className="h-full bg-white"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Stats Grid */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+          <div className="p-2 bg-emerald-500/10 rounded-xl w-fit mb-3">
+            <Target className="text-emerald-500" size={20} />
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Precisión</p>
+          <h4 className="text-2xl font-bold">{accuracy}%</h4>
+        </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
+          <div className="p-2 bg-blue-500/10 rounded-xl w-fit mb-3">
+            <Zap className="text-blue-500" size={20} />
+          </div>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-1">Pomodoros</p>
+          <h4 className="text-2xl font-bold">{pomodoroCount.toFixed(1)}</h4>
+        </div>
+      </div>
+
+      {/* Activity Chart Section */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-6 space-y-6">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <TrendingUp size={18} className="text-emerald-500" />
+              <h3 className="text-sm font-bold uppercase tracking-widest">Actividad</h3>
+            </div>
+            <div className="flex bg-black rounded-xl p-1">
+              {(['DAY', 'WEEK', 'MONTH', 'YEAR'] as Timeframe[]).map(tf => (
+                <button
+                  key={tf}
+                  onClick={() => setTimeframe(tf)}
+                  className={cn(
+                    "px-3 py-1 text-[10px] font-bold rounded-lg transition-all",
+                    timeframe === tf ? "bg-zinc-800 text-white" : "text-zinc-600"
+                  )}
+                >
+                  {tf === 'DAY' ? 'Hoy' : tf === 'WEEK' ? 'Sem' : tf === 'MONTH' ? 'Mes' : 'Año'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Filter size={14} className="text-zinc-500" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Filtrar por Etiqueta</span>
+              </div>
+              <div className="flex bg-black rounded-lg p-0.5">
+                <button
+                  onClick={() => setSelectedTag('ALL')}
+                  className={cn(
+                    "px-3 py-1 text-[9px] font-bold rounded-md transition-all",
+                    selectedTag === 'ALL' ? "bg-zinc-800 text-white" : "text-zinc-600"
+                  )}
+                >
+                  Todas
+                </button>
+                <select 
+                  value={selectedTag === 'ALL' ? '' : selectedTag}
+                  onChange={(e) => setSelectedTag(e.target.value || 'ALL')}
+                  className="bg-transparent text-[9px] font-bold text-zinc-400 border-none focus:ring-0 px-2 py-1 cursor-pointer appearance-none outline-none"
+                >
+                  <option value="" disabled className="bg-zinc-900 text-zinc-500">Filtrar...</option>
+                  {tags.map(tag => (
+                    <option key={tag.id} value={tag.name} className="bg-zinc-900 text-zinc-300">
+                      {tag.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={10} className="text-zinc-600 mr-1 self-center pointer-events-none" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="h-64 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={activityData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#27272a" />
+              <XAxis 
+                dataKey="name" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: '#71717a', fontSize: 10 }}
+              />
+              <YAxis 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: '#71717a', fontSize: 10 }}
+              />
+              <Tooltip 
+                cursor={{ fill: '#27272a' }}
+                contentStyle={{ backgroundColor: '#18181b', border: 'none', borderRadius: '16px', fontSize: '12px' }}
+                itemStyle={{ padding: '2px 0' }}
+              />
+              <Legend 
+                verticalAlign="top" 
+                align="right" 
+                iconType="circle"
+                wrapperStyle={{ paddingBottom: '20px', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase' }}
+              />
+              <Bar dataKey="tareas" name="Tareas" fill="#3b82f6" radius={[4, 4, 0, 0]} barSize={timeframe === 'MONTH' || timeframe === 'DAY' ? 4 : 8} />
+              <Bar dataKey="pomodoros" name="Pomodoros" fill="#10b981" radius={[4, 4, 0, 0]} barSize={timeframe === 'MONTH' || timeframe === 'DAY' ? 4 : 8} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+};
