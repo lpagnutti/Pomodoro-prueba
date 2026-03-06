@@ -10,7 +10,8 @@ import { Timer } from './components/Timer';
 import { TaskList } from './components/TaskList';
 import { Statistics } from './components/Statistics';
 import { History, IdeaList } from './components/HistoryAndIdeas';
-import { Home, ListTodo, History as HistoryIcon, BarChart2, Lightbulb } from 'lucide-react';
+import { Home as HomeIcon, ListTodo, History as HistoryIcon, BarChart2, Lightbulb } from 'lucide-react';
+import { Home } from './components/Home';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from './types';
 
@@ -18,7 +19,7 @@ type Screen = 'HOME' | 'TASKS' | 'HISTORY' | 'STATS' | 'IDEAS';
 
 const Navigation: React.FC<{ current: Screen, setScreen: (s: Screen) => void }> = ({ current, setScreen }) => {
   const items = [
-    { id: 'HOME', icon: Home, label: 'Inicio' },
+    { id: 'HOME', icon: HomeIcon, label: 'Inicio' },
     { id: 'TASKS', icon: ListTodo, label: 'Tareas' },
     { id: 'HISTORY', icon: HistoryIcon, label: 'Historial' },
     { id: 'STATS', icon: BarChart2, label: 'Stats' },
@@ -51,7 +52,7 @@ function AppContent() {
 
   const renderScreen = () => {
     switch (currentScreen) {
-      case 'HOME': return <Timer />;
+      case 'HOME': return <Home />;
       case 'TASKS': return <TaskList />;
       case 'HISTORY': return <History />;
       case 'STATS': return <Statistics />;

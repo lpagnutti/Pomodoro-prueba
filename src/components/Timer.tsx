@@ -227,7 +227,7 @@ export const Timer: React.FC = () => {
           {/* Then some pending tasks to select */}
           {tasks
             .filter(t => t.status !== TaskStatus.COMPLETED && !activeTaskIds.includes(t.id))
-            .slice(0, 3)
+            .slice(0, 5)
             .map(task => {
               const taskTag = tags.find(t => t.name === task.tag);
               const tagColor = taskTag?.color || '#10b981';

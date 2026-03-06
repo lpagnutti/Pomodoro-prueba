@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, Legend, PieChart, Pie } from 'recharts';
 import { useApp } from '../AppContext';
-import { TrendingUp, Target, Award, Zap, Calendar, Filter, ChevronDown } from 'lucide-react';
+import { TrendingUp, Target, Award, Zap, Calendar, Filter, ChevronDown, PieChart as PieChartIcon } from 'lucide-react';
 import { TaskStatus, cn } from '../types';
 
 type Timeframe = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR';
@@ -143,10 +143,45 @@ export const Statistics: React.FC = () => {
     const accuracy = totalEstimated > 0 ? Math.round((Math.min(totalEstimated, totalActual) / Math.max(totalEstimated, totalActual)) * 100) : 0;
     const pomodoroCount = periodSessions.reduce((sum, s) => sum + (s.duration / 25), 0);
 
-    return { accuracy, pomodoroCount };
+    return { accuracy, pomodoroCount, periodTasks };
   };
 
-  const { accuracy, pomodoroCount } = getFilteredStats();
+  const { accuracy, pomodoroCount, periodTasks } = getFilteredStats();
+
+  // Prepare data for the pie chart
+  const pieChartData = React.useMemo(() => {
+    const tagCounts: Record<string, number> = {};
+    let totalTasks = 0;
+
+    periodTasks.forEach(task => {
+      const tagName = task.tag || 'General';
+      tagCounts[tagName] = (tagCounts[tagName] || 0) + 1;
+      totalTasks++;
+    });
+
+    return Object.entries(tagCounts).map(([name, value]) => {
+      const tagObj = tags.find(t => t.name === name);
+      return {
+        name,
+        value,
+        color: tagObj?.color || '#10b981',
+        percentage: totalTasks > 0 ? Math.round((value / totalTasks) * 100) : 0
+      };
+    }).sort((a, b) => b.value - a.value); // Sort by value descending
+  }, [periodTasks, tags]);
+
+  const CustomPieTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      return (
+        <div className="bg-zinc-900 border border-zinc-800 p-3 rounded-xl shadow-xl">
+          <p className="text-sm font-bold" style={{ color: data.color }}>{data.name}</p>
+          <p className="text-xs text-zinc-400 mt-1">{data.value} tareas ({data.percentage}%)</p>
+        </div>
+      );
+    }
+    return null;
+  };
 
   return (
     <div className="flex flex-col w-full max-w-md mx-auto p-6 pb-24 space-y-8">
@@ -176,6 +211,24 @@ export const Statistics: React.FC = () => {
         </div>
       </div>
 
+      {/* Timeframe Selector for Stats */}
+      <div className="flex justify-center">
+        <div className="flex bg-black rounded-xl p-1 w-full max-w-xs">
+          {(['DAY', 'WEEK', 'MONTH', 'YEAR'] as Timeframe[]).map(tf => (
+            <button
+              key={tf}
+              onClick={() => setTimeframe(tf)}
+              className={cn(
+                "flex-1 py-2 text-[10px] font-bold rounded-lg transition-all",
+                timeframe === tf ? "bg-zinc-800 text-white" : "text-zinc-600"
+              )}
+            >
+              {tf === 'DAY' ? 'Hoy' : tf === 'WEEK' ? 'Sem' : tf === 'MONTH' ? 'Mes' : 'Año'}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Quick Stats Grid */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-zinc-900 border border-zinc-800 rounded-3xl p-5">
@@ -201,20 +254,6 @@ export const Statistics: React.FC = () => {
             <div className="flex items-center gap-2">
               <TrendingUp size={18} className="text-emerald-500" />
               <h3 className="text-sm font-bold uppercase tracking-widest">Actividad</h3>
-            </div>
-            <div className="flex bg-black rounded-xl p-1">
-              {(['DAY', 'WEEK', 'MONTH', 'YEAR'] as Timeframe[]).map(tf => (
-                <button
-                  key={tf}
-                  onClick={() => setTimeframe(tf)}
-                  className={cn(
-                    "px-3 py-1 text-[10px] font-bold rounded-lg transition-all",
-                    timeframe === tf ? "bg-zinc-800 text-white" : "text-zinc-600"
-                  )}
-                >
-                  {tf === 'DAY' ? 'Hoy' : tf === 'WEEK' ? 'Sem' : tf === 'MONTH' ? 'Mes' : 'Año'}
-                </button>
-              ))}
             </div>
           </div>
 
@@ -284,6 +323,58 @@ export const Statistics: React.FC = () => {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Pie Chart Section */}
+      {pieChartData.length > 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-[32px] p-6 space-y-6">
+          <div className="flex items-center gap-2">
+            <PieChartIcon size={18} className="text-emerald-500" />
+            <h3 className="text-sm font-bold uppercase tracking-widest">Distribución por Etiqueta</h3>
+          </div>
+          
+          <div className="h-64 w-full relative">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={pieChartData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                  stroke="none"
+                >
+                  {pieChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomPieTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            
+            {/* Center Text */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-3xl font-bold">{periodTasks.length}</span>
+              <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">Tareas</span>
+            </div>
+          </div>
+
+          {/* Custom Legend */}
+          <div className="grid grid-cols-2 gap-3 mt-4">
+            {pieChartData.map((entry, index) => (
+              <div key={index} className="flex items-center justify-between p-2 bg-zinc-800/50 rounded-xl">
+                <div className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                  <span className="text-xs font-medium truncate max-w-[80px]">{entry.name}</span>
+                </div>
+                <span className="text-xs font-bold text-zinc-400">{entry.percentage}%</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
+

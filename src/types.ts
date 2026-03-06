@@ -33,7 +33,7 @@ export interface Task {
   status: TaskStatus;
   createdAt: number;
   completedAt?: number;
-  dueDate?: number;
+  taskDate?: number;
 }
 
 export interface Idea {

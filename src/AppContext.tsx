@@ -44,6 +44,8 @@ interface AppContextType {
   stats: UserStats;
   currentScreen: Screen;
   setScreen: (screen: Screen) => void;
+  taskToResolve: string | null;
+  setTaskToResolve: (id: string | null) => void;
   draftTask: Partial<Task> | null;
   setDraftTask: (task: Partial<Task> | null) => void;
   addTask: (task: Partial<Task>) => void;
@@ -112,6 +114,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [currentScreen, setScreen] = useState<Screen>('HOME');
+  const [taskToResolve, setTaskToResolve] = useState<string | null>(null);
   const [draftTask, setDraftTask] = useState<Partial<Task> | null>(null);
 
   useEffect(() => {
@@ -246,7 +249,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           actualPomodoros: 0,
           status: TaskStatus.PENDING,
           createdAt: Date.now() - (Math.random() * 7 * 24 * 60 * 60 * 1000), // Random date in last 7 days
-          dueDate: hasDueDate ? Date.now() + (Math.random() * 14 * 24 * 60 * 60 * 1000) : undefined, // Random future date up to 14 days
+          taskDate: hasDueDate ? Date.now() + (Math.random() * 14 * 24 * 60 * 60 * 1000) : undefined, // Random future date up to 14 days
         });
       }
     });
@@ -256,9 +259,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [suggestedTasks, setSuggestedTasks] = useState<Task[]>([]);
 
   // Timer State
+  const [expectedEndTime, setExpectedEndTime] = useState<number | null>(() => {
+    const saved = localStorage.getItem('adhd_timer_expectedEndTime');
+    return saved ? parseInt(saved) : null;
+  });
+  
   const [timeLeft, setTimeLeft] = useState(() => {
-    const saved = localStorage.getItem('adhd_timer_timeLeft');
-    return saved ? parseInt(saved) : DEFAULT_POMODORO_DURATION * 60;
+    const savedTimeLeft = localStorage.getItem('adhd_timer_timeLeft');
+    const savedEndTime = localStorage.getItem('adhd_timer_expectedEndTime');
+    const savedIsActive = localStorage.getItem('adhd_timer_isActive') === 'true';
+    
+    if (savedIsActive && savedEndTime) {
+      const remaining = Math.max(0, Math.round((parseInt(savedEndTime) - Date.now()) / 1000));
+      return remaining;
+    }
+    return savedTimeLeft ? parseInt(savedTimeLeft) : DEFAULT_POMODORO_DURATION * 60;
   });
   const [isActive, setIsActive] = useState(() => {
     const saved = localStorage.getItem('adhd_timer_isActive');
@@ -285,18 +300,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Split localStorage effects to avoid saving timeLeft every second
   useEffect(() => {
-    localStorage.setItem('adhd_timer_timeLeft', timeLeft.toString());
+    if (!isActive) {
+      localStorage.setItem('adhd_timer_timeLeft', timeLeft.toString());
+    }
+  }, [timeLeft, isActive]);
+
+  useEffect(() => {
     localStorage.setItem('adhd_timer_isActive', isActive.toString());
     localStorage.setItem('adhd_timer_mode', mode);
     localStorage.setItem('adhd_timer_duration', duration.toString());
     localStorage.setItem('adhd_timer_energyLevel', energyLevel);
     localStorage.setItem('adhd_timer_activeTaskIds', JSON.stringify(activeTaskIds));
     localStorage.setItem('adhd_timer_sessionTaskIds', JSON.stringify(sessionTaskIds));
-  }, [timeLeft, isActive, mode, duration, energyLevel, activeTaskIds, sessionTaskIds]);
+    if (expectedEndTime) {
+      localStorage.setItem('adhd_timer_expectedEndTime', expectedEndTime.toString());
+    } else {
+      localStorage.removeItem('adhd_timer_expectedEndTime');
+    }
+  }, [isActive, mode, duration, energyLevel, activeTaskIds, sessionTaskIds, expectedEndTime]);
 
   const handleTimerComplete = useCallback(() => {
     setIsActive(false);
+    setExpectedEndTime(null);
     
     if (mode === 'WORK') {
       addSession({
@@ -307,6 +334,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         type: mode,
         tasksWorkedOn: sessionTaskIds
       });
+      
+      // Prompt for task resolution if tasks were worked on
+      if (sessionTaskIds.length > 0) {
+        setTaskToResolve(sessionTaskIds[0]);
+      }
+      
       setMode('BREAK');
       setTimeLeft(5 * 60);
     } else {
@@ -319,17 +352,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
-    if (isActive && timeLeft > 0) {
+    if (isActive && expectedEndTime) {
       interval = setInterval(() => {
-        setTimeLeft(prev => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
-      handleTimerComplete();
+        const remaining = Math.max(0, Math.round((expectedEndTime - Date.now()) / 1000));
+        setTimeLeft(remaining);
+        if (remaining === 0) {
+          handleTimerComplete();
+        }
+      }, 500); // Check every 500ms for better accuracy
+    } else if (isActive && !expectedEndTime) {
+      // Fallback if expectedEndTime is missing but active
+      setExpectedEndTime(Date.now() + timeLeft * 1000);
     }
     return () => {
       if (interval) clearInterval(interval);
     };
-  }, [isActive, timeLeft, handleTimerComplete]);
+  }, [isActive, expectedEndTime, handleTimerComplete, timeLeft]);
 
   const toggleTimer = () => {
     if (isActive && mode === 'WORK') {
@@ -340,7 +378,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Don't start if no task is selected in work mode
       return;
     }
-    setIsActive(!isActive);
+    
+    if (!isActive) {
+      setExpectedEndTime(Date.now() + timeLeft * 1000);
+      setIsActive(true);
+    } else {
+      setExpectedEndTime(null);
+      setIsActive(false);
+    }
   };
   
   const resetTimer = () => {
@@ -359,6 +404,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
     setIsActive(false);
+    setExpectedEndTime(null);
     setTimeLeft(Math.round(duration * 60));
     setMode('WORK');
     setSessionTaskIds([]);
@@ -405,15 +451,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setSuggestedTasks([]);
       return;
     }
-    // Sort by estimatedPomodoros (ascending) and take top 3
+    // Sort by estimatedPomodoros (ascending) and take top 5
     const sorted = [...pending].sort((a, b) => a.estimatedPomodoros - b.estimatedPomodoros);
-    setSuggestedTasks(sorted.slice(0, 3));
+    setSuggestedTasks(sorted.slice(0, 5));
   }, [tasks]);
 
   return (
     <AppContext.Provider value={{ 
       tasks, ideas, sessions, stats, tags,
       currentScreen, setScreen,
+      taskToResolve, setTaskToResolve,
       draftTask, setDraftTask,
       addTask, updateTask, deleteTask, addIdea, addSession, completeTask,
       convertIdeaToTask,

@@ -22,10 +22,22 @@ export const TaskList: React.FC = () => {
   const { tasks, addTask, updateTask, deleteTask, completeTask, tags, addTag, updateTag, deleteTag, draftTask, setDraftTask } = useApp();
   const [showAddForm, setShowAddForm] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [showFuture, setShowFuture] = useState(false);
   const [newTaskName, setNewTaskName] = useState('');
   const [newTag, setNewTag] = useState(tags[0]?.name || 'General');
   const [newEstimate, setNewEstimate] = useState(1);
   const [newDueDate, setNewDueDate] = useState<string>('');
+
+  const [expandedTags, setExpandedTags] = useState<Record<string, boolean>>({});
+  const [expandedCompletedTags, setExpandedCompletedTags] = useState<Record<string, boolean>>({});
+
+  const toggleTag = (tagName: string) => {
+    setExpandedTags(prev => ({ ...prev, [tagName]: !prev[tagName] }));
+  };
+
+  const toggleCompletedTag = (tagName: string) => {
+    setExpandedCompletedTags(prev => ({ ...prev, [tagName]: !prev[tagName] }));
+  };
 
   // Handle draft task from idea conversion
   React.useEffect(() => {
@@ -41,7 +53,11 @@ export const TaskList: React.FC = () => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const pendingTasks = tasks.filter(t => t.status !== TaskStatus.COMPLETED);
+  const pendingTasks = tasks.filter(t => {
+    if (t.status === TaskStatus.COMPLETED) return false;
+    const isFuture = t.taskDate && t.taskDate > today.getTime();
+    return showFuture ? isFuture : !isFuture;
+  });
   
   const groupedTasks = pendingTasks.reduce((acc: Record<string, Task[]>, task) => {
     const tagName = task.tag || 'General';
@@ -60,10 +76,10 @@ export const TaskList: React.FC = () => {
       if (aIsOverdue && !bIsOverdue) return -1;
       if (!aIsOverdue && bIsOverdue) return 1;
       
-      // If both are same status (both overdue or both today/future), sort by dueDate
-      if (a.dueDate && b.dueDate) return a.dueDate - b.dueDate;
-      if (a.dueDate) return -1;
-      if (b.dueDate) return 1;
+      // If both are same status (both overdue or both today/future), sort by taskDate
+      if (a.taskDate && b.taskDate) return a.taskDate - b.taskDate;
+      if (a.taskDate) return -1;
+      if (b.taskDate) return 1;
       
       // Finally by estimate
       return a.estimatedPomodoros - b.estimatedPomodoros;
@@ -76,6 +92,13 @@ export const TaskList: React.FC = () => {
     t.completedAt >= today.getTime()
   );
 
+  const groupedCompletedTasks = completedTasks.reduce((acc: Record<string, Task[]>, task) => {
+    const tagName = task.tag || 'General';
+    if (!acc[tagName]) acc[tagName] = [];
+    acc[tagName].push(task);
+    return acc;
+  }, {});
+
   const [taskToDelete, setTaskToDelete] = useState<string | null>(null);
   const [taskToComplete, setTaskToComplete] = useState<string | null>(null);
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
@@ -87,7 +110,7 @@ export const TaskList: React.FC = () => {
         name: newTaskName,
         tag: newTag,
         estimatedPomodoros: newEstimate,
-        dueDate: newDueDate ? new Date(newDueDate).getTime() : undefined,
+        taskDate: newDueDate ? new Date(newDueDate).getTime() : undefined,
       });
       setNewTaskName('');
       setNewEstimate(1);
@@ -113,6 +136,15 @@ export const TaskList: React.FC = () => {
       <div className="flex items-center justify-between">
         <h2 className="text-3xl font-bold tracking-tight">Tareas</h2>
         <div className="flex gap-2">
+          <button 
+            onClick={() => setShowFuture(!showFuture)}
+            className={cn(
+              "px-3 py-2 rounded-xl text-xs font-bold uppercase tracking-widest transition-colors",
+              showFuture ? "bg-emerald-500 text-black" : "bg-zinc-900 text-zinc-400"
+            )}
+          >
+            {showFuture ? 'Ver Hoy' : 'Ver Futuro'}
+          </button>
           <button 
             onClick={() => setShowTagManager(true)}
             className="p-3 rounded-2xl bg-zinc-900 text-zinc-400 hover:text-white transition-colors"
@@ -357,20 +389,35 @@ export const TaskList: React.FC = () => {
             {Object.entries(groupedTasks).map(([tagName, tagTasks]: [string, Task[]]) => {
               const tagObj = tags.find(t => t.name === tagName);
               const tagColor = tagObj?.color || '#10b981';
+              const isExpanded = expandedTags[tagName];
               
               return (
                 <div key={tagName} className="space-y-3">
-                  <div className="flex items-center gap-2 px-1">
+                  <button 
+                    onClick={() => toggleTag(tagName)}
+                    className="flex items-center w-full gap-2 px-1 group"
+                  >
                     <div className="w-1 h-3 rounded-full" style={{ backgroundColor: tagColor }} />
-                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{tagName}</h4>
-                    <span className="text-[10px] text-zinc-700 ml-auto font-mono">{tagTasks.length}</span>
-                  </div>
+                    <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 group-hover:text-zinc-300 transition-colors">{tagName}</h4>
+                    <div className="flex items-center gap-2 ml-auto">
+                      <span className="text-[10px] text-zinc-700 font-mono">{tagTasks.length} tareas</span>
+                      <span className="text-[10px] text-zinc-700 font-mono">{tagTasks.reduce((sum, t) => sum + t.estimatedPomodoros, 0)} 🍅</span>
+                      {isExpanded ? <ChevronUp size={12} className="text-zinc-600" /> : <ChevronDown size={12} className="text-zinc-600" />}
+                    </div>
+                  </button>
                   
-                  <div className="space-y-2">
-                    {tagTasks.map(task => {
+                  <AnimatePresence>
+                    {isExpanded && (
+                      <motion.div 
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="space-y-2 overflow-hidden"
+                      >
+                        {tagTasks.map(task => {
                       const isOverdue = task.createdAt < today.getTime();
                       const relativeTime = getRelativeTimeLabel(task.createdAt, today);
-                      const dueDateLabel = task.dueDate ? new Date(task.dueDate).toLocaleDateString('es-LA', { day: 'numeric', month: 'short' }) : null;
+                      const taskDateLabel = task.taskDate ? new Date(task.taskDate).toLocaleDateString('es-LA', { day: 'numeric', month: 'short' }) : null;
                       
                       return (
                         <motion.div 
@@ -399,9 +446,9 @@ export const TaskList: React.FC = () => {
                                 <span className="text-[8px] font-mono text-zinc-600">
                                   {task.estimatedPomodoros} 🍅
                                 </span>
-                                {dueDateLabel && (
+                                {taskDateLabel && (
                                   <span className="text-[8px] flex items-center gap-1 text-zinc-500">
-                                    <CalendarIcon size={8} /> {dueDateLabel}
+                                    <CalendarIcon size={8} /> {taskDateLabel}
                                   </span>
                                 )}
                               </div>
@@ -425,16 +472,18 @@ export const TaskList: React.FC = () => {
                         </motion.div>
                       );
                     })}
-                  </div>
-                </div>
-              );
-            })}
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          );
+        })}
           </div>
         )}
       </div>
 
       {/* Completed Tasks */}
-      {completedTasks.length > 0 && (
+      {completedTasks.length > 0 && !showFuture && (
         <div className="space-y-4">
           <button 
             onClick={() => setShowCompleted(!showCompleted)}
@@ -453,28 +502,84 @@ export const TaskList: React.FC = () => {
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: 'auto' }}
                 exit={{ opacity: 0, height: 0 }}
-                className="space-y-3 overflow-hidden"
+                className="space-y-8 overflow-hidden"
               >
-                {completedTasks.map(task => (
-                  <div 
-                    key={task.id}
-                    className="bg-zinc-900/50 border border-zinc-800/50 rounded-3xl p-5"
-                  >
-                    <div className="flex items-start gap-4">
-                      <div className="mt-1 text-emerald-500">
-                        <CheckCircle2 size={24} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="text-lg font-medium leading-tight line-through text-zinc-500">{task.name}</h4>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className="text-[10px] font-mono text-zinc-600">
-                            Logrado en {task.actualPomodoros.toFixed(1)} 🍅
-                          </span>
+                {Object.entries(groupedCompletedTasks).map(([tagName, tagTasks]: [string, Task[]]) => {
+                  const tagObj = tags.find(t => t.name === tagName);
+                  const tagColor = tagObj?.color || '#10b981';
+                  const isExpanded = expandedCompletedTags[tagName];
+                  
+                  return (
+                    <div key={tagName} className="space-y-3">
+                      <button 
+                        onClick={() => toggleCompletedTag(tagName)}
+                        className="flex items-center w-full gap-2 px-1 group"
+                      >
+                        <div className="w-1 h-3 rounded-full" style={{ backgroundColor: tagColor }} />
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 group-hover:text-zinc-300 transition-colors">{tagName}</h4>
+                        <div className="flex items-center gap-2 ml-auto">
+                          <span className="text-[10px] text-zinc-700 font-mono">{tagTasks.length} tareas</span>
+                          <span className="text-[10px] text-zinc-700 font-mono">{tagTasks.reduce((sum, t) => sum + t.actualPomodoros, 0).toFixed(1)} 🍅</span>
+                          {isExpanded ? <ChevronUp size={12} className="text-zinc-600" /> : <ChevronDown size={12} className="text-zinc-600" />}
                         </div>
-                      </div>
+                      </button>
+                      
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div 
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="space-y-2 overflow-hidden"
+                          >
+                            {tagTasks.map(task => {
+                              const taskDateLabel = task.completedAt ? new Date(task.completedAt).toLocaleTimeString('es-LA', { hour: '2-digit', minute: '2-digit' }) : null;
+                              
+                              return (
+                                <motion.div 
+                                  layout
+                                  key={task.id}
+                                  className="group relative bg-zinc-900/40 border border-zinc-800/40 rounded-xl p-2.5 hover:border-zinc-700 transition-colors opacity-70"
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="flex-shrink-0 text-emerald-500">
+                                      <CheckCircle2 size={18} />
+                                    </div>
+                                    
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <h5 className="text-xs font-medium leading-tight truncate text-zinc-400 line-through">{task.name}</h5>
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        <span className="text-[8px] font-mono text-zinc-600">
+                                          {task.actualPomodoros.toFixed(1)} 🍅
+                                        </span>
+                                        {taskDateLabel && (
+                                          <span className="text-[8px] flex items-center gap-1 text-zinc-500">
+                                            <CheckCircle2 size={8} /> {taskDateLabel}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-1">
+                                      <button 
+                                        onClick={() => setTaskToDelete(task.id)}
+                                        className="opacity-0 group-hover:opacity-100 p-1 text-zinc-800 hover:text-red-500 transition-all"
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </motion.div>
             )}
           </AnimatePresence>
@@ -537,8 +642,8 @@ export const TaskList: React.FC = () => {
                         <CalendarIcon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" />
                         <input
                           type="date"
-                          value={taskToEdit.dueDate ? new Date(taskToEdit.dueDate).toISOString().split('T')[0] : ''}
-                          onChange={(e) => setTaskToEdit({ ...taskToEdit, dueDate: e.target.value ? new Date(e.target.value).getTime() : undefined })}
+                          value={taskToEdit.taskDate ? new Date(taskToEdit.taskDate).toISOString().split('T')[0] : ''}
+                          onChange={(e) => setTaskToEdit({ ...taskToEdit, taskDate: e.target.value ? new Date(e.target.value).getTime() : undefined })}
                           className="w-full bg-zinc-800 border-none rounded-2xl pl-12 pr-4 py-4 text-white focus:ring-2 focus:ring-emerald-500 [color-scheme:dark]"
                         />
                       </div>
