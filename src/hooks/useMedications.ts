@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot, runTransaction } from 'firebase/firestore';
-import { db } from '../firebase';
+import { getDb } from '../firebase';
 import { Medication, MedicationLog } from '../types';
 import { useEffect } from 'react';
 
@@ -16,6 +16,7 @@ const EMPTY_LOGS: MedicationLog[] = [];
 // Hooks
 export function useMedications(userId: string | null) {
   const queryClient = useQueryClient();
+  const db = getDb();
 
   useEffect(() => {
     if (!userId) return;

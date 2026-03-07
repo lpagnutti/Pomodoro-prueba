@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { collection, doc, getDocs, setDoc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { getDb, getAuthInstance } from '../firebase';
 import { Task, TaskStatus } from '../types';
 import { useEffect } from 'react';
 
@@ -33,6 +33,7 @@ interface FirestoreErrorInfo {
 }
 
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const auth = getAuthInstance();
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
     authInfo: {
@@ -65,6 +66,7 @@ const EMPTY_TASKS: Task[] = [];
 // Hooks
 export function useTasks(userId: string | null) {
   const queryClient = useQueryClient();
+  const db = getDb();
 
   useEffect(() => {
     if (!userId) return;
@@ -101,6 +103,7 @@ export function useTasks(userId: string | null) {
 // Mutations
 export function useAddTask(userId: string | null) {
   const queryClient = useQueryClient();
+  const db = getDb();
   return useMutation({
     mutationFn: async (task: Partial<Task>) => {
       if (!userId) throw new Error('User not authenticated');
@@ -130,6 +133,7 @@ export function useAddTask(userId: string | null) {
 
 export function useUpdateTask(userId: string | null) {
   const queryClient = useQueryClient();
+  const db = getDb();
   return useMutation({
     mutationFn: async ({ id, updates }: { id: string; updates: Partial<Task> }) => {
       if (!userId) throw new Error('User not authenticated');
@@ -148,6 +152,7 @@ export function useUpdateTask(userId: string | null) {
 
 export function useDeleteTask(userId: string | null) {
   const queryClient = useQueryClient();
+  const db = getDb();
   return useMutation({
     mutationFn: async (id: string) => {
       if (!userId) throw new Error('User not authenticated');
